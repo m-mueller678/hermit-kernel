@@ -42,3 +42,17 @@ pub extern "C" fn sys_allocate_virtual(size: usize, align: usize) -> usize {
 pub unsafe extern "C" fn sys_deallocate_virtual(addr: usize, size: usize) {
 	unsafe { deallocate_virtual(VirtAddr::from(addr), size) };
 }
+
+#[hermit_macro::system]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sys_global_tlb_flush() {
+	cfg_if::cfg_if!(
+		if #[cfg(target_arch = "x86_64")]{
+			// #[cfg(feature="smp")]
+			// crate::arch::x86_64::kernel::apic::ipi_tlb_flush();
+			x86_64::structures::paging::mapper::MapperFlushAll::new().flush_all();
+		}else{
+			unimplemented!();
+		}
+	);
+}
