@@ -546,6 +546,7 @@ pub fn init() {
 		// It uses a mapped page for communication.
 		let local_apic_address =
 			allocate_virtual(BasePageSize::SIZE as usize, BasePageSize::SIZE as usize).unwrap();
+		LOCAL_APIC_ADDRESS.set(local_apic_address).unwrap();
 
 		let mut flags = PageTableEntryFlags::empty();
 		flags.device().writable().execute_disable();
