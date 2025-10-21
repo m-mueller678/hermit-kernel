@@ -195,6 +195,7 @@ pub(crate) fn init() {
 		let virt_size: usize = (avail_mem - stack_reserve).align_down(LargePageSize::SIZE as usize);
 		#[cfg(feature = "mman")]
 		let virt_size: usize = ((avail_mem * 75) / 100).align_down(LargePageSize::SIZE as usize);
+		let virt_size = virt_size.min(3 << 30);
 
 		let layout = PageLayout::from_size_align(virt_size, LargePageSize::SIZE as usize).unwrap();
 		let page_range = PageAlloc::allocate(layout).unwrap();
