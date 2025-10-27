@@ -758,7 +758,8 @@ impl PerCoreScheduler {
 		self.current_task.borrow().last_stack_pointer
 	}
 
-	/// Triggers the scheduler to reschedule the tasks.
+	/// Run background work and determine if a switch to another task should be performed.
+	/// If a switch should be pefromed, returns a pointer to Task::last_stack_pointer of the current task.
 	/// Interrupt flag must be cleared before calling this function.
 	pub fn scheduler(&mut self) -> Option<*mut usize> {
 		// run background tasks
@@ -779,14 +780,11 @@ impl PerCoreScheduler {
 			)
 		};
 
-		let mut new_task = None;
-
-		if status == TaskStatus::Running {
+		// Decide if we should switch to a different task
+		let task = if status == TaskStatus::Running {
 			// A task is currently running.
 			// Check if a task with a equal or higher priority is available.
-			if let Some(task) = self.ready_queue.pop_with_prio(prio) {
-				new_task = Some(task);
-			}
+			self.ready_queue.pop_with_prio(prio)
 		} else {
 			if status == TaskStatus::Finished {
 				// Mark the finished task as invalid and add it to the finished tasks for a later cleanup.
@@ -799,68 +797,69 @@ impl PerCoreScheduler {
 			if let Some(task) = self.ready_queue.pop() {
 				// This available task becomes the new task.
 				debug!("Task is available.");
-				new_task = Some(task);
+				Some(task)
 			} else if status != TaskStatus::Idle {
 				// The Idle task becomes the new task.
 				debug!("Only Idle Task is available.");
-				new_task = Some(self.idle_task.clone());
+				Some(self.idle_task.clone())
+			} else {
+				// The idle task is the current task, no need to switch.
+				None
 			}
+		};
+
+		// if there is no new task to switch to, we are done.
+		let task = task?;
+
+		// Handle the current task.
+		if status == TaskStatus::Running {
+			// Mark the running task as ready again and add it back to the queue.
+			self.current_task.borrow_mut().status = TaskStatus::Ready;
+			self.ready_queue.push(self.current_task.clone());
 		}
 
-		if let Some(task) = new_task {
-			// There is a new task we want to switch to.
-
-			// Handle the current task.
-			if status == TaskStatus::Running {
-				// Mark the running task as ready again and add it back to the queue.
-				self.current_task.borrow_mut().status = TaskStatus::Ready;
-				self.ready_queue.push(self.current_task.clone());
+		// Handle the new task and get information about it.
+		let (new_id, new_stack_pointer) = {
+			let mut borrowed = task.borrow_mut();
+			if borrowed.status != TaskStatus::Idle {
+				// Mark the new task as running.
+				borrowed.status = TaskStatus::Running;
 			}
 
-			// Handle the new task and get information about it.
-			let (new_id, new_stack_pointer) = {
-				let mut borrowed = task.borrow_mut();
-				if borrowed.status != TaskStatus::Idle {
-					// Mark the new task as running.
-					borrowed.status = TaskStatus::Running;
+			(borrowed.id, borrowed.last_stack_pointer)
+		};
+
+		if id == new_id {
+			return None;
+		}
+
+		// Tell the scheduler about the new task.
+		debug!(
+			"Switching task from {} to {} (stack {:#X} => {:p})",
+			id,
+			new_id,
+			unsafe { *last_stack_pointer },
+			new_stack_pointer
+		);
+
+		cfg_if::cfg_if! {
+			if #[cfg(target_arch = "riscv64")]{
+				if sstatus::read().fs() == sstatus::FS::Dirty {
+					self.current_task.borrow_mut().last_fpu_state.save();
 				}
-
-				(borrowed.id, borrowed.last_stack_pointer)
-			};
-
-			if id != new_id {
-				// Tell the scheduler about the new task.
-				debug!(
-					"Switching task from {} to {} (stack {:#X} => {:p})",
-					id,
-					new_id,
-					unsafe { *last_stack_pointer },
-					new_stack_pointer
-				);
-				#[cfg(not(target_arch = "riscv64"))]
-				{
-					self.current_task = task;
+				task.borrow().last_fpu_state.restore();
+				self.current_task = task;
+				unsafe {
+					switch_to_task(last_stack_pointer, new_stack_pointer.as_usize());
 				}
-
+				None
+			}else{
+				self.current_task = task;
 				// Finally return the context of the new task.
-				#[cfg(not(target_arch = "riscv64"))]
-				return Some(last_stack_pointer);
-
-				#[cfg(target_arch = "riscv64")]
-				{
-					if sstatus::read().fs() == sstatus::FS::Dirty {
-						self.current_task.borrow_mut().last_fpu_state.save();
-					}
-					task.borrow().last_fpu_state.restore();
-					self.current_task = task;
-					unsafe {
-						switch_to_task(last_stack_pointer, new_stack_pointer.as_usize());
-					}
-				}
+				// FIXME: this actually refers to the old task, I do not understand this comment
+				Some(last_stack_pointer)
 			}
 		}
-
-		None
 	}
 }
 
