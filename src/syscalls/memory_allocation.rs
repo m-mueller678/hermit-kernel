@@ -1,18 +1,14 @@
-use memory_addresses::{PhysAddr, VirtAddr};
+use free_list::{PageLayout, PageRange};
 
-use crate::mm::physicalmem::{allocate_physical, deallocate_physical};
-use crate::mm::virtualmem::{allocate_virtual, deallocate_virtual};
+use crate::mm::{FrameAlloc, PageAlloc, PageRangeAllocator};
 
 /// Allocate physical memory.
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_allocate_physical(size: usize, align: usize) -> usize {
-	match allocate_physical(size, align) {
-		Ok(x) => {
-			assert!(!x.is_null());
-			x.as_usize()
-		}
-		Err(_) => 0,
+	match FrameAlloc::allocate(PageLayout::from_size_align(size, align).unwrap()) {
+		Ok(x) => x.start(),
+		Err(_) => usize::MAX,
 	}
 }
 
@@ -20,19 +16,16 @@ pub extern "C" fn sys_allocate_physical(size: usize, align: usize) -> usize {
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sys_deallocate_physical(addr: usize, size: usize) {
-	unsafe { deallocate_physical(PhysAddr::from(addr), size) };
+	unsafe { FrameAlloc::deallocate(PageRange::from_start_len(addr, size).unwrap()) };
 }
 
 /// Allocate virtual memory.
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_allocate_virtual(size: usize, align: usize) -> usize {
-	match allocate_virtual(size, align) {
-		Ok(x) => {
-			assert!(!x.is_null());
-			x.as_usize()
-		}
-		Err(_) => 0,
+	match PageAlloc::allocate(PageLayout::from_size_align(size, align).unwrap()) {
+		Ok(x) => x.start(),
+		Err(_) => usize::MAX,
 	}
 }
 
@@ -40,7 +33,7 @@ pub extern "C" fn sys_allocate_virtual(size: usize, align: usize) -> usize {
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sys_deallocate_virtual(addr: usize, size: usize) {
-	unsafe { deallocate_virtual(VirtAddr::from(addr), size) };
+	unsafe { PageAlloc::deallocate(PageRange::from_start_len(addr, size).unwrap()) };
 }
 
 #[hermit_macro::system]
