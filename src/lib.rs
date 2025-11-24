@@ -149,6 +149,7 @@ extern "C" fn initd(_arg: usize) {
 	// give the IP thread time to initialize the network interface
 	core_scheduler().reschedule();
 
+	print_kenrnel_address_banner();
 	info!("Jumping into application");
 
 	#[cfg(not(test))]
@@ -173,6 +174,18 @@ fn synch_all_cores() {
 	while CORE_COUNTER.load(Ordering::SeqCst) != possible_cpus {
 		spin_loop();
 	}
+}
+
+fn print_kenrnel_address_banner() {
+	info!(
+		"\n\
+\x1b[1;31m####################################################\x1b[0m\n\
+\x1b[1;31m====================================================\x1b[0m\n\
+\x1b[1;36m>>>  KERNEL STARTS AT ADDRESS:\x1b[0m \x1b[1;35m    {:p}    \x1b[0m\n\
+\x1b[1;31m====================================================\x1b[0m\n\
+\x1b[1;31m####################################################\x1b[0m",
+		env::get_base_address()
+	);
 }
 
 /// Entry Point of Hermit for the Boot Processor
@@ -203,8 +216,7 @@ fn boot_processor_main() -> ! {
 	info!("Enabled features: {}", built_info::FEATURES_LOWERCASE_STR);
 	info!("Built on {}", built_info::BUILT_TIME_UTC);
 
-	info!("Kernel starts at {:p}", env::get_base_address());
-
+	print_kenrnel_address_banner();
 	if let Some(fdt) = env::fdt() {
 		info!("FDT:\n{fdt:#?}");
 	}
