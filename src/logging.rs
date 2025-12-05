@@ -4,8 +4,6 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use anstyle::AnsiColor;
 use log::{Level, LevelFilter, Metadata, Record};
 
-use crate::core_local::core_scheduler;
-
 pub static KERNEL_LOGGER: KernelLogger = KernelLogger::new();
 
 /// Data structure to filter kernel messages
@@ -28,7 +26,7 @@ impl KernelLogger {
 		self.time.store(time, Ordering::Relaxed);
 	}
 
-	pub fn log_common(&self, level: Level, target: &str, message: &fmt::Arguments<'_>) {
+	pub fn log_common(&self, level: Level, target: &str, args: &fmt::Arguments<'_>) {
 		let level = ColorLevel(level);
 		// FIXME: Use `super let` once stable
 		let time;
@@ -45,12 +43,7 @@ impl KernelLogger {
 		} else {
 			format_args!("")
 		};
-		let format_task_id = if cfg!(feature = "log-task-id") {
-			format_args!(" {}", core_scheduler().get_current_task_id())
-		} else {
-			format_args!("")
-		};
-		println!("{format_time}[{core_id} {format_task_id}][{level}{format_target}] {message}");
+		println!("{format_time}[{core_id}][{level}{format_target}] {args}");
 	}
 }
 
