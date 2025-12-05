@@ -4,6 +4,8 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use anstyle::AnsiColor;
 use log::{Level, LevelFilter, Metadata, Record};
 
+use crate::core_local::core_scheduler;
+
 pub static KERNEL_LOGGER: KernelLogger = KernelLogger::new();
 
 /// Data structure to filter kernel messages
@@ -25,6 +27,31 @@ impl KernelLogger {
 	pub fn set_time(&self, time: bool) {
 		self.time.store(time, Ordering::Relaxed);
 	}
+
+	pub fn log_common(&self, level: Level, target: &str, message: &fmt::Arguments<'_>) {
+		let level = ColorLevel(level);
+		// FIXME: Use `super let` once stable
+		let time;
+		let format_time = if self.time() {
+			time = Microseconds(crate::processor::get_timer_ticks());
+			format_args!("[{time}]")
+		} else {
+			format_args!("[            ]")
+		};
+		let core_id = crate::arch::core_local::core_id();
+		// FIXME: Use `super let` once stable
+		let format_target = if cfg!(feature = "log-target") {
+			format_args!(" {target}")
+		} else {
+			format_args!("")
+		};
+		let format_task_id = if cfg!(feature = "log-task-id") {
+			format_args!(" {}", core_scheduler().get_current_task_id())
+		} else {
+			format_args!("")
+		};
+		println!("{format_time}[{core_id} {format_task_id}][{level}{format_target}] {message}");
+	}
 }
 
 impl log::Log for KernelLogger {
@@ -37,29 +64,9 @@ impl log::Log for KernelLogger {
 	}
 
 	fn log(&self, record: &Record<'_>) {
-		if !self.enabled(record.metadata()) {
-			return;
+		if self.enabled(record.metadata()) {
+			self.log_common(record.level(), record.target(), record.args());
 		}
-
-		// FIXME: Use `super let` once stable
-		let time;
-		let format_time = if self.time() {
-			time = Microseconds(crate::processor::get_timer_ticks());
-			format_args!("[{time}]")
-		} else {
-			format_args!("[            ]")
-		};
-		let core_id = crate::arch::core_local::core_id();
-		let level = ColorLevel(record.level());
-		// FIXME: Use `super let` once stable
-		let target = record.target();
-		let format_target = if cfg!(feature = "log-target") {
-			format_args!(" {target}")
-		} else {
-			format_args!("")
-		};
-		let args = record.args();
-		println!("{format_time}[{core_id}][{level}{format_target}] {args}");
 	}
 }
 

@@ -37,6 +37,7 @@ mod condvar;
 mod entropy;
 mod futex;
 pub(crate) mod interfaces;
+mod log;
 mod memory_allocation;
 #[cfg(feature = "mman")]
 mod mman;

@@ -58,6 +58,7 @@ gem-net = ["net", "dep:tock-registers"]
 idle-poll = []
 kernel-stack = []
 log-target = []
+log-task-id = []
 net = []
 mman = []
 mmap = ["mman"] # Deprecated in favor of mman
