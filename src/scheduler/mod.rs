@@ -963,10 +963,7 @@ pub unsafe fn spawn(
 		selector as u32
 	};
 
-	let ret = unsafe { PerCoreScheduler::spawn(func, arg, prio, core_id, stack_size) };
-
-	println!("spawned task {ret}, main address: {func:?}");
-	ret
+	unsafe { PerCoreScheduler::spawn(func, arg, prio, core_id, stack_size) }
 }
 
 #[allow(clippy::result_unit_err)]
