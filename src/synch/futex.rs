@@ -10,7 +10,7 @@ use crate::arch::kernel::core_local::core_scheduler;
 use crate::arch::kernel::processor::get_timer_ticks;
 use crate::errno::Errno;
 use crate::scheduler::PerCoreSchedulerExt;
-use crate::scheduler::task::TaskHandlePriorityQueue;
+use crate::scheduler::task::{TaskBlockReason, TaskHandlePriorityQueue};
 
 // TODO: Replace with a concurrent hashmap.
 static PARKING_LOT: InterruptTicketMutex<HashMap<usize, TaskHandlePriorityQueue, RandomState>> =
@@ -53,7 +53,10 @@ pub(crate) fn futex_wait(
 	};
 
 	let scheduler = core_scheduler();
-	scheduler.block_current_task(wakeup_time);
+	scheduler.block_current_task(
+		wakeup_time,
+		TaskBlockReason::Futex(core::ptr::from_ref(address).addr()),
+	);
 	let handle = scheduler.get_current_task_handle();
 	parking_lot.entry(addr(address)).or_default().push(handle);
 	drop(parking_lot);
@@ -88,7 +91,10 @@ pub(crate) fn futex_wait(
 			} else {
 				// A spurious wakeup occurred, sleep again.
 				// Tasks do not change core, so the handle in the parking lot is still current.
-				scheduler.block_current_task(wakeup_time);
+				scheduler.block_current_task(
+					wakeup_time,
+					TaskBlockReason::Futex(core::ptr::from_ref(address).addr()),
+				);
 			}
 		}
 		drop(parking_lot);
@@ -122,7 +128,10 @@ pub(crate) fn futex_wait_and_set(
 	};
 
 	let scheduler = core_scheduler();
-	scheduler.block_current_task(wakeup_time);
+	scheduler.block_current_task(
+		wakeup_time,
+		TaskBlockReason::Futex(core::ptr::from_ref(address).addr()),
+	);
 	let handle = scheduler.get_current_task_handle();
 	parking_lot.entry(addr(address)).or_default().push(handle);
 	drop(parking_lot);
@@ -157,7 +166,10 @@ pub(crate) fn futex_wait_and_set(
 			} else {
 				// A spurious wakeup occurred, sleep again.
 				// Tasks do not change core, so the handle in the parking lot is still current.
-				scheduler.block_current_task(wakeup_time);
+				scheduler.block_current_task(
+					wakeup_time,
+					TaskBlockReason::Futex(core::ptr::from_ref(address).addr()),
+				);
 			}
 		}
 		drop(parking_lot);

@@ -95,7 +95,12 @@ impl Semaphore {
 			if backoff.is_completed() {
 				// We couldn't acquire the semaphore.
 				// Block the current task and add it to the wakeup queue.
-				core_scheduler.block_current_task(wakeup_time);
+				core_scheduler.block_current_task(
+					wakeup_time,
+					crate::scheduler::task::TaskBlockReason::Semaphore(
+						core::ptr::from_ref(self).addr(),
+					),
+				);
 				locked_state
 					.queue
 					.push(core_scheduler.get_current_task_handle());

@@ -432,10 +432,10 @@ impl PerCoreScheduler {
 	}
 
 	#[inline]
-	pub fn block_current_task(&mut self, wakeup_time: Option<u64>) {
+	pub fn block_current_task(&mut self, wakeup_time: Option<u64>, reason: TaskBlockReason) {
 		without_interrupts(|| {
 			self.blocked_tasks
-				.add(self.current_task.clone(), wakeup_time);
+				.add(self.current_task.clone(), wakeup_time, reason);
 		});
 	}
 
@@ -738,6 +738,7 @@ impl PerCoreScheduler {
 
 			if core_scheduler.ready_queue.is_empty() {
 				if backoff.is_completed() {
+					// error!("enable_and_wait");
 					interrupts::enable_and_wait();
 					backoff.reset();
 				} else {
@@ -973,7 +974,7 @@ pub fn join(id: TaskId) -> Result<(), ()> {
 
 		if let Some(queue) = waiting_tasks_guard.get_mut(&id) {
 			queue.push_back(core_scheduler.get_current_task_handle());
-			core_scheduler.block_current_task(None);
+			core_scheduler.block_current_task(None, TaskBlockReason::Join(id));
 
 			// Switch to the next task.
 			drop(waiting_tasks_guard);

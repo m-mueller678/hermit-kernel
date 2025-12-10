@@ -3,6 +3,8 @@
 #[cfg(not(feature = "common-os"))]
 pub(crate) mod tls;
 
+mod task_block_reason;
+
 use alloc::collections::{LinkedList, VecDeque};
 use alloc::rc::Rc;
 use alloc::sync::Arc;
@@ -572,11 +574,16 @@ impl BlockedTaskQueue {
 	}
 
 	/// Blocks the given task for `wakeup_time` ticks, or indefinitely if None is given.
-	pub fn add(&mut self, task: Rc<RefCell<Task>>, wakeup_time: Option<u64>) {
+	pub fn add(
+		&mut self,
+		task: Rc<RefCell<Task>>,
+		wakeup_time: Option<u64>,
+		reason: TaskBlockReason,
+	) {
 		{
 			// Set the task status to Blocked.
 			let mut borrowed = task.borrow_mut();
-			debug!("Blocking task {}", borrowed.id);
+			debug!("Blocking task {} for {reason:?}", borrowed.id);
 
 			assert_eq!(
 				borrowed.status,

@@ -7,7 +7,7 @@ use crate::arch::processor::{get_frequency, get_timestamp};
 use crate::config::USER_STACK_SIZE;
 use crate::errno::Errno;
 use crate::scheduler::PerCoreSchedulerExt;
-use crate::scheduler::task::{Priority, TaskHandle, TaskId};
+use crate::scheduler::task::{Priority, TaskBlockReason, TaskHandle, TaskId};
 use crate::time::timespec;
 use crate::{arch, scheduler};
 
@@ -71,7 +71,8 @@ pub(super) fn usleep(usecs: u64) {
 		debug!("sys_usleep blocking the task for {usecs} microseconds");
 		let wakeup_time = arch::processor::get_timer_ticks() + usecs;
 		let core_scheduler = core_scheduler();
-		core_scheduler.block_current_task(Some(wakeup_time));
+		core_scheduler
+			.block_current_task(Some(wakeup_time), scheduler::task::TaskBlockReason::Usleep);
 
 		// Switch to the next task.
 		core_scheduler.reschedule();
@@ -208,7 +209,7 @@ fn block_current_task(timeout: Option<u64>) {
 	let tid = core_scheduler.get_current_task_id();
 
 	BLOCKED_TASKS.lock().insert(tid, handle);
-	core_scheduler.block_current_task(wakeup_time);
+	core_scheduler.block_current_task(wakeup_time, TaskBlockReason::ExplicitBlockSyscall);
 }
 
 /// Set the current task state to `blocked`
