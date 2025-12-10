@@ -808,7 +808,7 @@ impl Read for FuseFileHandleInner {
 	fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
 		let mut len = buf.len();
 		if len > MAX_READ_LEN {
-			debug!("Reading longer than max_read_len: {len}");
+			// debug!("Reading longer than max_read_len: {len}");
 			len = MAX_READ_LEN;
 		}
 		if let (Some(nid), Some(fh)) = (self.fuse_nid, self.fuse_fh) {
