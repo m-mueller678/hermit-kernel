@@ -1,5 +1,6 @@
 use free_list::{PageLayout, PageRange};
 
+use crate::core_local;
 use crate::mm::{FrameAlloc, PageAlloc, PageRangeAllocator};
 
 /// Allocate physical memory.
@@ -48,4 +49,10 @@ pub unsafe extern "C" fn sys_global_tlb_flush() {
 			unimplemented!();
 		}
 	);
+}
+
+#[hermit_macro::system]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sys_get_core_id() -> u32 {
+	core_local::core_id()
 }
