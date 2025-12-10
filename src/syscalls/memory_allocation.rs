@@ -64,11 +64,11 @@ pub extern "C" fn sys_dump_core_tasks_states() {
 	struct PrintTasks;
 	impl fmt::Display for PrintTasks {
 		fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-			write!(f, "tasks on core {}", core_id())?;
+			writeln!(f, "tasks on core {}", core_id())?;
 			let scheduler = core_scheduler();
 			for task in scheduler.iter_tasks() {
 				let task = task.borrow();
-				write!(f, "    {}: {:?}", task.id, task.status)?;
+				writeln!(f, "    {}: {:?}", task.id, task.status)?;
 			}
 			Ok(())
 		}
