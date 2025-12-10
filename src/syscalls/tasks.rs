@@ -71,8 +71,10 @@ pub(super) fn usleep(usecs: u64) {
 		debug!("sys_usleep blocking the task for {usecs} microseconds");
 		let wakeup_time = arch::processor::get_timer_ticks() + usecs;
 		let core_scheduler = core_scheduler();
-		core_scheduler
-			.block_current_task(Some(wakeup_time), scheduler::task::TaskBlockReason::Usleep);
+		core_scheduler.block_current_task(
+			Some(wakeup_time),
+			scheduler::task::TaskBlockReason::Usleep(usecs),
+		);
 
 		// Switch to the next task.
 		core_scheduler.reschedule();

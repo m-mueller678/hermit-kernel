@@ -113,7 +113,7 @@ impl PerCoreSchedulerExt for &mut PerCoreScheduler {
 					let borrowed = self.current_task.borrow();
 					(
 						borrowed.last_stack_pointer,
-						borrowed.status == TaskStatus::Idle,
+						matches!(borrowed.status, TaskStatus::Idle),
 					)
 				};
 
@@ -183,9 +183,8 @@ impl PerCoreSchedulerExt for &mut PerCoreScheduler {
 		without_interrupts(|| {
 			// Get the current task.
 			let mut current_task_borrowed = self.current_task.borrow_mut();
-			assert_ne!(
-				current_task_borrowed.status,
-				TaskStatus::Idle,
+			assert!(
+				!matches!(current_task_borrowed.status, TaskStatus::Idle),
 				"Trying to terminate the idle task"
 			);
 
@@ -245,6 +244,15 @@ impl From<NewTask> for Task {
 }
 
 impl PerCoreScheduler {
+	/// Iterate over all tasks in this scheduler
+	pub fn iter_tasks(&self) -> impl Iterator<Item = &Rc<RefCell<Task>>> {
+		self.blocked_tasks
+			.iter()
+			.chain(self.ready_queue.iter_all())
+			.chain(self.finished_tasks.iter())
+			.chain(core::iter::once(&self.current_task))
+	}
+
 	/// Spawn a new task.
 	pub unsafe fn spawn(
 		func: unsafe extern "C" fn(usize),
@@ -738,7 +746,6 @@ impl PerCoreScheduler {
 
 			if core_scheduler.ready_queue.is_empty() {
 				if backoff.is_completed() {
-					// error!("enable_and_wait");
 					interrupts::enable_and_wait();
 					backoff.reset();
 				} else {
@@ -782,12 +789,12 @@ impl PerCoreScheduler {
 		};
 
 		// Decide if we should switch to a different task
-		let task = if status == TaskStatus::Running {
+		let task = if matches!(status, TaskStatus::Running) {
 			// A task is currently running.
 			// Check if a task with a equal or higher priority is available.
 			self.ready_queue.pop_with_prio(prio)
 		} else {
-			if status == TaskStatus::Finished {
+			if matches!(status, TaskStatus::Finished) {
 				// Mark the finished task as invalid and add it to the finished tasks for a later cleanup.
 				self.current_task.borrow_mut().status = TaskStatus::Invalid;
 				self.finished_tasks.push_back(self.current_task.clone());
@@ -799,13 +806,13 @@ impl PerCoreScheduler {
 				// This available task becomes the new task.
 				debug!("Task is available.");
 				Some(task)
-			} else if status != TaskStatus::Idle {
+			} else if matches!(status, TaskStatus::Idle) {
+				// The idle task is the current task, no need to switch.
+				None
+			} else {
 				// The Idle task becomes the new task.
 				debug!("Only Idle Task is available.");
 				Some(self.idle_task.clone())
-			} else {
-				// The idle task is the current task, no need to switch.
-				None
 			}
 		};
 
@@ -813,7 +820,7 @@ impl PerCoreScheduler {
 		let task = task?;
 
 		// Handle the current task.
-		if status == TaskStatus::Running {
+		if matches!(status, TaskStatus::Running) {
 			// Mark the running task as ready again and add it back to the queue.
 			self.current_task.borrow_mut().status = TaskStatus::Ready;
 			self.ready_queue.push(self.current_task.clone());
@@ -822,7 +829,7 @@ impl PerCoreScheduler {
 		// Handle the new task and get information about it.
 		let (new_id, new_stack_pointer) = {
 			let mut borrowed = task.borrow_mut();
-			if borrowed.status != TaskStatus::Idle {
+			if !matches!(borrowed.status, TaskStatus::Idle) {
 				// Mark the new task as running.
 				borrowed.status = TaskStatus::Running;
 			}
@@ -956,7 +963,10 @@ pub unsafe fn spawn(
 		selector as u32
 	};
 
-	unsafe { PerCoreScheduler::spawn(func, arg, prio, core_id, stack_size) }
+	let ret = unsafe { PerCoreScheduler::spawn(func, arg, prio, core_id, stack_size) };
+
+	println!("spawned task {ret}, main address: {func:?}");
+	ret
 }
 
 #[allow(clippy::result_unit_err)]

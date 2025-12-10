@@ -3,8 +3,6 @@
 #[cfg(not(feature = "common-os"))]
 pub(crate) mod tls;
 
-mod task_block_reason;
-
 use alloc::collections::{LinkedList, VecDeque};
 use alloc::rc::Rc;
 use alloc::sync::Arc;
@@ -42,12 +40,13 @@ fn msb(n: u64) -> Option<u32> {
 }
 
 /// The status of the task - used for scheduling
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub(crate) enum TaskStatus {
 	Invalid,
 	Ready,
 	Running,
-	Blocked,
+	/// The associated BlockReason is only used in the Debug impl
+	Blocked(#[allow(dead_code)] TaskBlockReason),
 	Finished,
 	Idle,
 }
@@ -365,6 +364,10 @@ impl PriorityTaskQueue {
 
 		Err(())
 	}
+
+	pub fn iter_all(&self) -> impl Iterator<Item = &Rc<RefCell<Task>>> {
+		self.queues.iter().flat_map(|x| x.iter())
+	}
 }
 
 /// A task control block, which identifies either a process or a thread
@@ -552,7 +555,7 @@ impl BlockedTaskQueue {
 		);
 
 		assert!(
-			borrowed.status == TaskStatus::Blocked,
+			matches!(borrowed.status, TaskStatus::Blocked(_)),
 			"Trying to wake up task {} which is not blocked",
 			borrowed.id
 		);
@@ -585,13 +588,12 @@ impl BlockedTaskQueue {
 			let mut borrowed = task.borrow_mut();
 			debug!("Blocking task {} for {reason:?}", borrowed.id);
 
-			assert_eq!(
-				borrowed.status,
-				TaskStatus::Running,
+			assert!(
+				matches!(borrowed.status, TaskStatus::Running),
 				"Trying to block task {} which is not running",
 				borrowed.id
 			);
-			borrowed.status = TaskStatus::Blocked;
+			borrowed.status = TaskStatus::Blocked(reason);
 		}
 
 		let new_node = BlockedTask::new(task, wakeup_time);
@@ -740,4 +742,16 @@ impl BlockedTaskQueue {
 
 		arch::set_oneshot_timer(timer_wakeup_time);
 	}
+
+	pub fn iter(&self) -> impl Iterator<Item = &Rc<RefCell<Task>>> {
+		self.list.iter().map(|x| &x.task)
+	}
+}
+#[derive(Debug, Copy, Clone)]
+pub enum TaskBlockReason {
+	Join(TaskId),
+	Futex(usize),
+	Semaphore(usize),
+	Usleep(u64),
+	ExplicitBlockSyscall,
 }

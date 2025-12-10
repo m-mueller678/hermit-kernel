@@ -1,6 +1,6 @@
 use free_list::{PageLayout, PageRange};
 
-use crate::core_local;
+use crate::core_local::{self, core_id, core_scheduler};
 use crate::mm::{FrameAlloc, PageAlloc, PageRangeAllocator};
 
 /// Allocate physical memory.
@@ -55,4 +55,23 @@ pub unsafe extern "C" fn sys_global_tlb_flush() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sys_get_core_id() -> u32 {
 	core_local::core_id()
+}
+
+#[hermit_macro::system]
+#[unsafe(no_mangle)]
+pub extern "C" fn sys_dump_core_tasks_states() {
+	use core::fmt;
+	struct PrintTasks;
+	impl fmt::Display for PrintTasks {
+		fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+			write!(f, "tasks on core {}", core_id())?;
+			let scheduler = core_scheduler();
+			for task in scheduler.iter_tasks() {
+				let task = task.borrow();
+				write!(f, "    {}: {:?}", task.id, task.status)?;
+			}
+			Ok(())
+		}
+	}
+	println!("{}", PrintTasks);
 }
