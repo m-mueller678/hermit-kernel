@@ -63,7 +63,7 @@ impl log::Log for KernelLogger {
 	}
 }
 
-struct Microseconds(u64);
+pub struct Microseconds(pub u64);
 
 impl fmt::Display for Microseconds {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

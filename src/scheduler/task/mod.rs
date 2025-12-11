@@ -6,7 +6,7 @@ pub(crate) mod tls;
 use alloc::collections::{LinkedList, VecDeque};
 use alloc::rc::Rc;
 use alloc::sync::Arc;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::num::NonZeroU64;
 use core::{cmp, fmt};
 
@@ -600,8 +600,19 @@ impl BlockedTaskQueue {
 
 		// Shall the task automatically be woken up after a certain time?
 		if let Some(wt) = wakeup_time {
+			for x in &self.list {
+				info!(
+					"task in list: {:?}: {:?}",
+					x.wakeup_time,
+					x.task.borrow_mut().id
+				);
+			}
 			let mut cursor = self.list.cursor_front_mut();
+			let any_earlier_timers = Cell::new(false);
 			let set_oneshot_timer = || {
+				if any_earlier_timers.get() {
+					return;
+				}
 				#[cfg(not(feature = "net"))]
 				arch::set_oneshot_timer(wakeup_time);
 				#[cfg(feature = "net")]
@@ -619,11 +630,15 @@ impl BlockedTaskQueue {
 
 			while let Some(node) = cursor.current() {
 				let node_wakeup_time = node.wakeup_time;
-				if node_wakeup_time.is_none() || wt < node_wakeup_time.unwrap() {
+				let is_none_or = node_wakeup_time.is_none_or(|nwt| wt < nwt);
+				info!("node_wakeup_time: {node_wakeup_time:?}, {is_none_or}");
+				if is_none_or {
 					cursor.insert_before(new_node);
 
 					set_oneshot_timer();
 					return;
+				} else {
+					any_earlier_timers.set(true);
 				}
 
 				cursor.move_next();

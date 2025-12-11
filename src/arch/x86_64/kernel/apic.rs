@@ -716,6 +716,11 @@ fn __set_oneshot_timer(wakeup_time: Option<u64>) {
 }
 
 pub fn set_oneshot_timer(wakeup_time: Option<u64>) {
+	if let Some(t) = wakeup_time {
+		info!("set oneshot timer : {}", crate::logging::Microseconds(t));
+	} else {
+		info!("set oneshot timer : None");
+	}
 	without_interrupts(|| {
 		__set_oneshot_timer(wakeup_time);
 	});
