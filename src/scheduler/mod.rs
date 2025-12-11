@@ -6,7 +6,8 @@ use alloc::rc::Rc;
 use alloc::sync::Arc;
 #[cfg(feature = "smp")]
 use alloc::vec::Vec;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
+use core::num::NonZeroU64;
 use core::ptr;
 #[cfg(all(target_arch = "x86_64", feature = "smp"))]
 use core::sync::atomic::AtomicBool;
@@ -18,6 +19,7 @@ use hashbrown::{HashMap, hash_map};
 use hermit_sync::*;
 #[cfg(target_arch = "riscv64")]
 use riscv::register::sstatus;
+pub use scheduler_impl::Scheduler;
 
 use crate::arch::core_local::*;
 #[cfg(target_arch = "riscv64")]
@@ -31,7 +33,14 @@ use crate::kernel::scheduler::TaskStacks;
 use crate::scheduler::task::*;
 use crate::{arch, io};
 
-pub mod task;
+mod scheduler_impl;
+mod task;
+
+impl Scheduler {
+	pub fn abort(&self) {
+		self.exit_current_task(-1);
+	}
+}
 
 static NO_TASKS: AtomicU32 = AtomicU32::new(0);
 /// Map between Core ID and per-core scheduler
@@ -51,7 +60,7 @@ static TASKS: InterruptTicketMutex<BTreeMap<TaskId, TaskHandle>> =
 pub type CoreId = u32;
 
 #[cfg(feature = "smp")]
-pub(crate) struct SchedulerInput {
+struct SchedulerInput {
 	/// Queue of new tasks
 	new_tasks: VecDeque<NewTask>,
 	/// Queue of task, which are wakeup by another core
@@ -60,7 +69,7 @@ pub(crate) struct SchedulerInput {
 
 #[cfg(feature = "smp")]
 impl SchedulerInput {
-	pub fn new() -> Self {
+	fn new() -> Self {
 		Self {
 			new_tasks: VecDeque::new(),
 			wakeup_tasks: VecDeque::new(),
@@ -73,7 +82,7 @@ impl SchedulerInput {
 	not(any(target_arch = "x86_64", target_arch = "aarch64")),
 	repr(align(64))
 )]
-pub(crate) struct PerCoreScheduler {
+struct PerCoreScheduler {
 	/// Core ID of this per-core scheduler
 	#[cfg(feature = "smp")]
 	core_id: CoreId,
@@ -92,7 +101,7 @@ pub(crate) struct PerCoreScheduler {
 	blocked_tasks: BlockedTaskQueue,
 }
 
-pub(crate) trait PerCoreSchedulerExt {
+trait PerCoreSchedulerExt {
 	/// Triggers the scheduler to reschedule the tasks.
 	/// Interrupt flag will be cleared during the reschedule
 	fn reschedule(self);
@@ -244,7 +253,7 @@ impl From<NewTask> for Task {
 
 impl PerCoreScheduler {
 	/// Spawn a new task.
-	pub unsafe fn spawn(
+	unsafe fn spawn(
 		func: unsafe extern "C" fn(usize),
 		arg: usize,
 		prio: Priority,
@@ -384,19 +393,19 @@ impl PerCoreScheduler {
 	}
 
 	#[cfg(feature = "newlib")]
-	pub fn clone(&self, func: extern "C" fn(usize), arg: usize) -> TaskId {
+	fn clone(&self, func: extern "C" fn(usize), arg: usize) -> TaskId {
 		without_interrupts(|| self.clone_impl(func, arg))
 	}
 
 	/// Returns `true` if a reschedule is required
 	#[inline]
 	#[cfg(all(any(target_arch = "x86_64", target_arch = "riscv64"), feature = "smp"))]
-	pub fn is_scheduling(&self) -> bool {
+	fn is_scheduling(&self) -> bool {
 		self.current_task.borrow().prio < self.ready_queue.get_highest_priority()
 	}
 
 	#[inline]
-	pub fn handle_waiting_tasks(&mut self) {
+	fn handle_waiting_tasks(&mut self) {
 		without_interrupts(|| {
 			crate::executor::run();
 			self.blocked_tasks
@@ -405,7 +414,7 @@ impl PerCoreScheduler {
 	}
 
 	#[cfg(not(feature = "smp"))]
-	pub fn custom_wakeup(&mut self, task: TaskHandle) {
+	fn custom_wakeup(&mut self, task: TaskHandle) {
 		without_interrupts(|| {
 			let task = self.blocked_tasks.custom_wakeup(task);
 			self.ready_queue.push(task);
@@ -413,7 +422,7 @@ impl PerCoreScheduler {
 	}
 
 	#[cfg(feature = "smp")]
-	pub fn custom_wakeup(&mut self, task: TaskHandle) {
+	fn custom_wakeup(&mut self, task: TaskHandle) {
 		if task.get_core_id() == self.core_id {
 			without_interrupts(|| {
 				let task = self.blocked_tasks.custom_wakeup(task);
@@ -430,7 +439,7 @@ impl PerCoreScheduler {
 	}
 
 	#[inline]
-	pub fn block_current_task(&mut self, wakeup_time: Option<u64>) {
+	fn block_current_task(&mut self, wakeup_time: Option<u64>) {
 		without_interrupts(|| {
 			self.blocked_tasks
 				.add(self.current_task.clone(), wakeup_time);
@@ -438,7 +447,7 @@ impl PerCoreScheduler {
 	}
 
 	#[inline]
-	pub fn get_current_task_handle(&self) -> TaskHandle {
+	fn get_current_task_handle(&self) -> TaskHandle {
 		without_interrupts(|| {
 			let current_task_borrowed = self.current_task.borrow();
 
@@ -452,12 +461,12 @@ impl PerCoreScheduler {
 	}
 
 	#[inline]
-	pub fn get_current_task_id(&self) -> TaskId {
+	fn get_current_task_id(&self) -> TaskId {
 		without_interrupts(|| self.current_task.borrow().id)
 	}
 
 	#[inline]
-	pub fn get_current_task_object_map(
+	fn get_current_task_object_map(
 		&self,
 	) -> Arc<
 		RwSpinLock<
@@ -470,7 +479,7 @@ impl PerCoreScheduler {
 	/// Map a file descriptor to their IO interface and returns
 	/// the shared reference
 	#[inline]
-	pub fn get_object(
+	fn get_object(
 		&self,
 		fd: FileDescriptor,
 	) -> io::Result<Arc<async_lock::RwLock<dyn ObjectInterface>>> {
@@ -485,7 +494,7 @@ impl PerCoreScheduler {
 	/// clone the standard descriptors.
 	#[cfg(feature = "common-os")]
 	#[cfg_attr(not(target_arch = "x86_64"), expect(dead_code))]
-	pub fn recreate_objmap(&self) -> io::Result<()> {
+	fn recreate_objmap(&self) -> io::Result<()> {
 		let mut map = HashMap::<
 			FileDescriptor,
 			Arc<async_lock::RwLock<dyn ObjectInterface>>,
@@ -512,7 +521,7 @@ impl PerCoreScheduler {
 
 	/// Insert a new IO interface and returns a file descriptor as
 	/// identifier to this object
-	pub fn insert_object(
+	fn insert_object(
 		&self,
 		obj: Arc<async_lock::RwLock<dyn ObjectInterface>>,
 	) -> io::Result<FileDescriptor> {
@@ -541,7 +550,7 @@ impl PerCoreScheduler {
 
 	/// Duplicate a IO interface and returns a new file descriptor as
 	/// identifier to the new copy
-	pub fn dup_object(&self, fd: FileDescriptor) -> io::Result<FileDescriptor> {
+	fn dup_object(&self, fd: FileDescriptor) -> io::Result<FileDescriptor> {
 		without_interrupts(|| {
 			let current_task = self.current_task.borrow();
 			let mut object_map = current_task.object_map.write();
@@ -572,11 +581,7 @@ impl PerCoreScheduler {
 		})
 	}
 
-	pub fn dup_object2(
-		&self,
-		fd1: FileDescriptor,
-		fd2: FileDescriptor,
-	) -> io::Result<FileDescriptor> {
+	fn dup_object2(&self, fd1: FileDescriptor, fd2: FileDescriptor) -> io::Result<FileDescriptor> {
 		without_interrupts(|| {
 			let current_task = self.current_task.borrow();
 			let mut object_map = current_task.object_map.write();
@@ -594,7 +599,7 @@ impl PerCoreScheduler {
 	}
 
 	/// Remove a IO interface, which is named by the file descriptor
-	pub fn remove_object(
+	fn remove_object(
 		&self,
 		fd: FileDescriptor,
 	) -> io::Result<Arc<async_lock::RwLock<dyn ObjectInterface>>> {
@@ -607,19 +612,19 @@ impl PerCoreScheduler {
 	}
 
 	#[inline]
-	pub fn get_current_task_prio(&self) -> Priority {
+	fn get_current_task_prio(&self) -> Priority {
 		without_interrupts(|| self.current_task.borrow().prio)
 	}
 
 	/// Returns reference to prio_bitmap
 	#[allow(dead_code)]
 	#[inline]
-	pub fn get_priority_bitmap(&self) -> &u64 {
+	fn get_priority_bitmap(&self) -> &u64 {
 		self.ready_queue.get_priority_bitmap()
 	}
 
 	#[cfg(target_arch = "x86_64")]
-	pub fn set_current_kernel_stack(&self) {
+	fn set_current_kernel_stack(&self) {
 		let current_task_borrowed = self.current_task.borrow();
 		let tss = unsafe { &mut *CoreLocal::get().tss.get() };
 
@@ -634,14 +639,14 @@ impl PerCoreScheduler {
 		tss.interrupt_stack_table[0] = ist_start.into();
 	}
 
-	pub fn set_current_task_priority(&mut self, prio: Priority) {
+	fn set_current_task_priority(&mut self, prio: Priority) {
 		without_interrupts(|| {
 			trace!("Change priority of the current task");
 			self.current_task.borrow_mut().prio = prio;
 		});
 	}
 
-	pub fn set_priority(&mut self, id: TaskId, prio: Priority) -> Result<(), ()> {
+	fn set_priority(&mut self, id: TaskId, prio: Priority) -> Result<(), ()> {
 		trace!("Change priority of task {id} to priority {prio}");
 
 		without_interrupts(|| {
@@ -666,7 +671,7 @@ impl PerCoreScheduler {
 	}
 
 	#[cfg(target_arch = "riscv64")]
-	pub fn set_current_kernel_stack(&self) {
+	fn set_current_kernel_stack(&self) {
 		let current_task_borrowed = self.current_task.borrow();
 
 		let stack = (current_task_borrowed.stacks.get_kernel_stack()
@@ -679,7 +684,7 @@ impl PerCoreScheduler {
 	/// Save the FPU context for the current FPU owner and restore it for the current task,
 	/// which wants to use the FPU now.
 	#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-	pub fn fpu_switch(&mut self) {
+	fn fpu_switch(&mut self) {
 		if !Rc::ptr_eq(&self.current_task, &self.fpu_owner) {
 			debug!(
 				"Switching FPU owner from task {} to {}",
@@ -702,7 +707,7 @@ impl PerCoreScheduler {
 	}
 
 	#[cfg(feature = "smp")]
-	pub fn check_input(&mut self) {
+	fn check_input(&mut self) {
 		let mut input_locked = CoreLocal::get().scheduler_input.lock();
 
 		while let Some(task) = input_locked.wakeup_tasks.pop_front() {
@@ -719,7 +724,7 @@ impl PerCoreScheduler {
 	/// Only the idle task should call this function.
 	/// Set the idle task to halt state if not another
 	/// available.
-	pub fn run() -> ! {
+	fn run() -> ! {
 		let backoff = Backoff::new();
 
 		loop {
@@ -752,13 +757,13 @@ impl PerCoreScheduler {
 
 	#[inline]
 	#[cfg(target_arch = "aarch64")]
-	pub fn get_last_stack_pointer(&self) -> memory_addresses::VirtAddr {
+	fn get_last_stack_pointer(&self) -> memory_addresses::VirtAddr {
 		self.current_task.borrow().last_stack_pointer
 	}
 
 	/// Triggers the scheduler to reschedule the tasks.
 	/// Interrupt flag must be cleared before calling this function.
-	pub fn scheduler(&mut self) -> Option<*mut usize> {
+	fn scheduler(&mut self) -> Option<*mut usize> {
 		// run background tasks
 		crate::executor::run();
 
@@ -875,12 +880,12 @@ fn get_tid() -> TaskId {
 }
 
 #[inline]
-pub(crate) fn abort() -> ! {
+pub fn abort() -> ! {
 	core_scheduler().exit(-1)
 }
 
 /// Add a per-core scheduler for the current core.
-pub(crate) fn add_current_core() {
+fn add_current_core() {
 	// Create an idle task for this core.
 	let core_id = core_id();
 	let tid = get_tid();
@@ -912,7 +917,6 @@ pub(crate) fn add_current_core() {
 	});
 
 	let scheduler = Box::into_raw(boxed_scheduler);
-	set_core_scheduler(scheduler);
 	#[cfg(feature = "smp")]
 	{
 		SCHEDULER_INPUTS.lock().insert(
@@ -928,7 +932,7 @@ pub(crate) fn add_current_core() {
 
 #[inline]
 #[cfg(all(target_arch = "x86_64", feature = "smp", not(feature = "idle-poll")))]
-pub(crate) fn take_core_hlt_state(core_id: CoreId) -> bool {
+pub fn take_core_hlt_state(core_id: CoreId) -> bool {
 	CORE_HLT_STATE.lock()[usize::try_from(core_id).unwrap()].swap(false, Ordering::Acquire)
 }
 
@@ -983,19 +987,6 @@ pub fn join(id: TaskId) -> Result<(), ()> {
 	}
 }
 
-pub fn shutdown(arg: i32) -> ! {
-	crate::syscalls::shutdown(arg)
-}
-
 fn get_task_handle(id: TaskId) -> Option<TaskHandle> {
 	TASKS.lock().get(&id).copied()
-}
-
-#[cfg(all(target_arch = "x86_64", feature = "common-os"))]
-pub(crate) static BOOT_ROOT_PAGE_TABLE: OnceCell<usize> = OnceCell::new();
-
-#[cfg(all(target_arch = "x86_64", feature = "common-os"))]
-pub(crate) fn get_root_page_table() -> usize {
-	let current_task_borrowed = core_scheduler().current_task.borrow_mut();
-	current_task_borrowed.root_page_table
 }

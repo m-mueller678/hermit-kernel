@@ -17,15 +17,15 @@ use x86_64::structures::tss::TaskStateSegment;
 use super::CPU_ONLINE;
 use super::interrupts::{IRQ_COUNTERS, IrqStatistics};
 #[cfg(feature = "smp")]
-use crate::scheduler::SchedulerInput;
-use crate::scheduler::{CoreId, PerCoreScheduler};
+use crate::scheduler::CoreId;
+use crate::scheduler::Scheduler;
 
 pub(crate) struct CoreLocal {
 	this: *const Self,
 	/// Sequential ID of this CPU Core.
 	core_id: CoreId,
 	/// Scheduler for this CPU Core.
-	scheduler: Cell<*mut PerCoreScheduler>,
+	scheduler: Scheduler,
 	/// Task State Segment (TSS) allocated for this CPU Core.
 	pub tss: Cell<*mut TaskStateSegment>,
 	/// start address of the kernel stack
@@ -36,9 +36,6 @@ pub(crate) struct CoreLocal {
 	ex: StaticExecutor<RawSpinMutex, RawRwSpinLock>,
 	#[cfg(feature = "smp")]
 	pub hlt: AtomicBool,
-	/// Queues to handle incoming requests from the other cores
-	#[cfg(feature = "smp")]
-	pub scheduler_input: InterruptTicketMutex<SchedulerInput>,
 }
 
 impl CoreLocal {
@@ -57,15 +54,13 @@ impl CoreLocal {
 		let this = Self {
 			this: ptr::null_mut(),
 			core_id,
-			scheduler: Cell::new(ptr::null_mut()),
 			tss: Cell::new(ptr::null_mut()),
 			kernel_stack: Cell::new(ptr::null_mut()),
 			irq_statistics,
 			ex: StaticExecutor::new(),
 			#[cfg(feature = "smp")]
 			hlt: AtomicBool::new(false),
-			#[cfg(feature = "smp")]
-			scheduler_input: InterruptTicketMutex::new(SchedulerInput::new()),
+			scheduler: Scheduler::new(),
 		};
 		let this = if core_id == 0 {
 			take_static::take_static! {
@@ -106,16 +101,12 @@ pub(crate) fn core_id() -> CoreId {
 	}
 }
 
-pub(crate) fn core_scheduler() -> &'static mut PerCoreScheduler {
-	unsafe { CoreLocal::get().scheduler.get().as_mut().unwrap() }
+pub(crate) fn core_scheduler() -> &'static Scheduler {
+	&CoreLocal::get().scheduler
 }
 
 pub(crate) fn ex() -> &'static StaticExecutor<RawSpinMutex, RawRwSpinLock> {
 	&CoreLocal::get().ex
-}
-
-pub(crate) fn set_core_scheduler(scheduler: *mut PerCoreScheduler) {
-	CoreLocal::get().scheduler.set(scheduler);
 }
 
 pub(crate) fn increment_irq_counter(irq_no: u8) {

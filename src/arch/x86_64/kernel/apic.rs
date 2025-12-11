@@ -281,13 +281,12 @@ extern "x86-interrupt" fn error_interrupt_handler(stack_frame: interrupts::Excep
 extern "x86-interrupt" fn spurious_interrupt_handler(stack_frame: interrupts::ExceptionStackFrame) {
 	swapgs(&stack_frame);
 	error!("Spurious Interrupt: {stack_frame:#?}");
-	scheduler::abort();
+	core_scheduler().abort();
 }
 
 #[cfg(feature = "smp")]
 extern "x86-interrupt" fn wakeup_handler(stack_frame: interrupts::ExceptionStackFrame) {
 	swapgs(&stack_frame);
-	use crate::scheduler::PerCoreSchedulerExt;
 
 	debug!("Received Wakeup Interrupt");
 	increment_irq_counter(WAKEUP_INTERRUPT_NUMBER);

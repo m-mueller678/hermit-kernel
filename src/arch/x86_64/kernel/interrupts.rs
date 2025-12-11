@@ -170,7 +170,6 @@ fn handle_interrupt(stack_frame: ExceptionStackFrame, index: u8, _error_code: Op
 
 	crate::arch::x86_64::swapgs(&stack_frame);
 	use crate::arch::kernel::core_local::core_scheduler;
-	use crate::scheduler::PerCoreSchedulerExt;
 
 	if let Some(handlers) = IRQ_HANDLERS.get()
 		&& let Some(map) = handlers.get(&(index - 32))
