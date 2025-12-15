@@ -21,7 +21,6 @@ pub unsafe extern "C" fn sys_futex_wait(
 	if address.is_null() {
 		return -i32::from(Errno::Inval);
 	}
-
 	let address = unsafe { &*(address as *const AtomicU32) };
 	let timeout = if timeout.is_null() {
 		None

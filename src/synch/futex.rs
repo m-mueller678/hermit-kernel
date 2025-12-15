@@ -45,6 +45,11 @@ pub(crate) fn futex_wait(
 	if address.load(SeqCst) != expected {
 		return -i32::from(Errno::Again);
 	}
+	crate::debug_trace::Event::FutexWait {
+		address: core::ptr::from_ref(address).addr(),
+		is_set: false,
+	}
+	.submit();
 
 	let wakeup_time = if flags.contains(Flags::RELATIVE) {
 		timeout.and_then(|t| get_timer_ticks().checked_add(t))
@@ -115,6 +120,11 @@ pub(crate) fn futex_wait_and_set(
 	flags: Flags,
 	new_value: u32,
 ) -> i32 {
+	crate::debug_trace::Event::FutexWait {
+		address: core::ptr::from_ref(address).addr(),
+		is_set: true,
+	}
+	.submit();
 	let mut parking_lot = PARKING_LOT.lock();
 	// Check the futex value after locking the parking lot so that all changes are observed.
 	if address.swap(new_value, SeqCst) != expected {
@@ -205,6 +215,11 @@ pub(crate) fn futex_wake(address: *const AtomicU32, count: i32) -> i32 {
 	if queue.get().is_empty() {
 		queue.remove();
 	}
+	crate::debug_trace::Event::FutexWake {
+		address: address.addr(),
+		woken: woken as u32,
+	}
+	.submit();
 
 	woken
 }
@@ -244,6 +259,11 @@ pub(crate) fn futex_wake_or_set(address: &AtomicU32, count: i32, new_value: u32)
 	if woken == 0 {
 		address.store(new_value, SeqCst);
 	}
+	crate::debug_trace::Event::FutexWake {
+		address: core::ptr::from_ref(address).addr(),
+		woken: woken as u32,
+	}
+	.submit();
 
 	woken
 }

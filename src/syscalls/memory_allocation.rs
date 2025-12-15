@@ -75,3 +75,9 @@ pub extern "C" fn sys_dump_core_tasks_states() {
 	}
 	println!("{}", PrintTasks);
 }
+
+#[hermit_macro::system]
+#[unsafe(no_mangle)]
+pub extern "C" fn sys_dump_debug_trace() {
+	crate::debug_trace::dump();
+}

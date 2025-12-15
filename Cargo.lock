@@ -864,6 +864,7 @@ dependencies = [
  "hermit-entry",
  "hermit-macro",
  "hermit-sync",
+ "insert-take",
  "llvm-tools",
  "lock_api",
  "log",
@@ -1075,6 +1076,12 @@ dependencies = [
  "icu_normalizer",
  "icu_properties",
 ]
+
+[[package]]
+name = "insert-take"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4994990605dfa9013b60630f10107776ac13e43921b4834c0f02ad2a55c0a93c"
 
 [[package]]
 name = "interrupt-mutex"

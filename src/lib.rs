@@ -65,6 +65,7 @@ mod logging;
 pub mod arch;
 mod config;
 pub mod console;
+mod debug_trace;
 mod drivers;
 mod entropy;
 mod env;

@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use core::arch::asm;
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 #[cfg(feature = "smp")]
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
@@ -16,6 +16,7 @@ use x86_64::structures::tss::TaskStateSegment;
 
 use super::CPU_ONLINE;
 use super::interrupts::{IRQ_COUNTERS, IrqStatistics};
+use crate::debug_trace::DebugTraceLocal;
 #[cfg(feature = "smp")]
 use crate::scheduler::SchedulerInput;
 use crate::scheduler::{CoreId, PerCoreScheduler};
@@ -39,6 +40,7 @@ pub(crate) struct CoreLocal {
 	/// Queues to handle incoming requests from the other cores
 	#[cfg(feature = "smp")]
 	pub scheduler_input: InterruptTicketMutex<SchedulerInput>,
+	pub debug_trace_local: RefCell<DebugTraceLocal>,
 }
 
 impl CoreLocal {
@@ -66,6 +68,7 @@ impl CoreLocal {
 			hlt: AtomicBool::new(false),
 			#[cfg(feature = "smp")]
 			scheduler_input: InterruptTicketMutex::new(SchedulerInput::new()),
+			debug_trace_local: RefCell::new(DebugTraceLocal::new()),
 		};
 		let this = if core_id == 0 {
 			take_static::take_static! {
