@@ -1,9 +1,5 @@
 #[cfg(feature = "alloc-stats")]
 mod alloc_stats;
-#[cfg(feature = "net")]
-pub(crate) mod device;
-#[cfg(feature = "net")]
-pub(crate) mod network;
 pub(crate) mod task;
 #[cfg(feature = "vsock")]
 pub(crate) mod vsock;
@@ -18,15 +14,11 @@ use core::time::Duration;
 
 use crossbeam_utils::Backoff;
 use hermit_sync::without_interrupts;
-#[cfg(feature = "net")]
-use smoltcp::time::Instant;
 
 use crate::arch::core_local;
 use crate::errno::Errno;
 use crate::executor::task::AsyncTask;
 use crate::io;
-#[cfg(feature = "net")]
-use crate::scheduler::PerCoreSchedulerExt;
 use crate::synch::futex::*;
 
 /// WakerRegistration is derived from smoltcp's
@@ -110,12 +102,7 @@ pub(crate) fn run() {
 
 /// Spawns a future on the executor.
 #[cfg_attr(
-	not(any(
-		feature = "alloc-stats",
-		feature = "shell",
-		feature = "net",
-		feature = "vsock"
-	)),
+	not(any(feature = "alloc-stats", feature = "shell", feature = "vsock")),
 	expect(dead_code)
 )]
 pub(crate) fn spawn<F>(future: F)
@@ -126,8 +113,6 @@ where
 }
 
 pub fn init() {
-	#[cfg(feature = "net")]
-	crate::executor::network::init();
 	#[cfg(feature = "vsock")]
 	crate::executor::vsock::init();
 	#[cfg(feature = "alloc-stats")]
@@ -155,101 +140,26 @@ where
 
 		let now = crate::arch::kernel::systemtime::now_micros();
 		if let Poll::Ready(t) = result {
-			// allow network interrupts
-			#[cfg(feature = "net")]
-			{
-				if let Some(mut guard) = crate::executor::network::NIC.try_lock() {
-					let delay = if let Ok(nic) = guard.as_nic_mut() {
-						nic.set_polling_mode(false);
-
-						nic.poll_delay(Instant::from_micros_const(now.try_into().unwrap()))
-							.map(|d| d.total_micros())
-					} else {
-						None
-					};
-					core_local::core_scheduler().add_network_timer(
-						delay.map(|d| crate::arch::processor::get_timer_ticks() + d),
-					);
-				}
-			}
-
 			return t;
 		}
 
 		if let Some(duration) = timeout
 			&& Duration::from_micros(now - start) >= duration
 		{
-			// allow network interrupts
-			#[cfg(feature = "net")]
-			{
-				if let Some(mut guard) = crate::executor::network::NIC.try_lock() {
-					let delay = if let Ok(nic) = guard.as_nic_mut() {
-						nic.set_polling_mode(false);
-
-						nic.poll_delay(Instant::from_micros_const(now.try_into().unwrap()))
-							.map(|d| d.total_micros())
-					} else {
-						None
-					};
-					core_local::core_scheduler().add_network_timer(
-						delay.map(|d| crate::arch::processor::get_timer_ticks() + d),
-					);
-				}
-			}
-
 			return Err(Errno::Time);
 		}
 
-		#[cfg(feature = "net")]
 		if backoff.is_completed() {
-			let delay = if let Some(mut guard) = crate::executor::network::NIC.try_lock() {
-				if let Ok(nic) = guard.as_nic_mut() {
-					nic.set_polling_mode(false);
+			let wakeup_time =
+				timeout.map(|duration| start + u64::try_from(duration.as_micros()).unwrap());
 
-					nic.poll_delay(Instant::from_micros_const(now.try_into().unwrap()))
-						.map(|d| d.total_micros())
-				} else {
-					None
-				}
-			} else {
-				None
-			};
+			// switch to another task
+			task_notify.wait(wakeup_time);
 
-			if delay.unwrap_or(10_000_000) > 10_000 {
-				core_local::core_scheduler().add_network_timer(
-					delay.map(|d| crate::arch::processor::get_timer_ticks() + d),
-				);
-				let wakeup_time =
-					timeout.map(|duration| start + u64::try_from(duration.as_micros()).unwrap());
-
-				// switch to another task
-				task_notify.wait(wakeup_time);
-
-				// restore default values
-				if let Ok(nic) = crate::executor::network::NIC.lock().as_nic_mut() {
-					nic.set_polling_mode(true);
-				}
-
-				backoff.reset();
-			}
+			// restore default values
+			backoff.reset();
 		} else {
 			backoff.snooze();
-		}
-
-		#[cfg(not(feature = "net"))]
-		{
-			if backoff.is_completed() {
-				let wakeup_time =
-					timeout.map(|duration| start + u64::try_from(duration.as_micros()).unwrap());
-
-				// switch to another task
-				task_notify.wait(wakeup_time);
-
-				// restore default values
-				backoff.reset();
-			} else {
-				backoff.snooze();
-			}
 		}
 	}
 }

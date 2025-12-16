@@ -51,13 +51,8 @@ pub struct Qemu {
 }
 
 #[derive(ValueEnum, PartialEq, Eq, Clone, Copy)]
+#[allow(clippy::enum_variant_names)]
 pub enum Device {
-	/// Cadence Gigabit Ethernet MAC (GEM).
-	CadenceGem,
-
-	/// RTL8139.
-	Rtl8139,
-
 	/// virtio-console via MMIO.
 	VirtioConsoleMmio,
 
@@ -68,12 +63,6 @@ pub enum Device {
 	///
 	/// This option also starts the `virtiofsd` virtio-fs vhost-user device daemon.
 	VirtioFsPci,
-
-	/// virtio-net via MMIO.
-	VirtioNetMmio,
-
-	/// virtio-net via PCI.
-	VirtioNetPci,
 }
 
 impl Qemu {
@@ -98,11 +87,7 @@ impl Qemu {
 		let memory = self.memory(image_name, arch, small);
 
 		// CadenceGem requires sifive_u, which in turn requires an SMP of at least 2.
-		let effective_smp = if self.devices.contains(&Device::CadenceGem) {
-			usize::max(smp, 2)
-		} else {
-			smp
-		};
+		let effective_smp = smp;
 
 		let qemu = cmd!(sh, "{program} {arg...}")
 			.args(&["-display", "none"])
@@ -147,15 +132,6 @@ impl Qemu {
 			"poll" => test_poll(guest_ip)?,
 			"stdin" => test_stdin(&mut qemu.0)?,
 			_ => {}
-		}
-
-		if matches!(
-			image_name,
-			"axum-example" | "http_server" | "http_server_poll" | "http_server_select"
-		) || self.devices.contains(&Device::CadenceGem)
-		// sifive_u, on which we test CadenceGem, does not support software shutdowns, so we have to kill the machine ourselves.
-		{
-			qemu.0.kill()?;
 		}
 
 		let status = qemu.0.wait_timeout(Duration::from_secs(60 * 6))?;
@@ -244,11 +220,7 @@ impl Qemu {
 			vec!["-machine".to_owned(), "virt,gic-version=3".to_owned()]
 		} else if arch == Arch::Riscv64 {
 			// CadenceGem requires sifive_u
-			let machine = if self.devices.contains(&Device::CadenceGem) {
-				"sifive_u"
-			} else {
-				"virt"
-			};
+			let machine = "virt";
 			vec![
 				"-machine".to_owned(),
 				machine.to_owned(),
@@ -292,10 +264,6 @@ impl Qemu {
 			Arch::Riscv64 => {
 				if self.accel {
 					todo!()
-				} else if self.devices.contains(&Device::CadenceGem) {
-					// CadenceGem does not seem to work with rv64 as the CPU,
-					// possibly because it requires sifive_u as the machine.
-					vec![]
 				} else {
 					vec!["-cpu".to_owned(), "rv64".to_owned()]
 				}
@@ -334,47 +302,10 @@ impl Qemu {
 	}
 
 	fn device_args(&self, memory: usize) -> Vec<String> {
-		let netdev_options = if self.tap {
-			"tap,id=net0,script=xtask/hermit-ifup,vhost=on"
-		} else {
-			"user,id=net0,hostfwd=tcp::9975-:9975,hostfwd=udp::9975-:9975,net=192.168.76.0/24,dhcpstart=192.168.76.9"
-		};
-
 		self.devices
 			.iter()
 			.copied()
 			.flat_map(|device| match device {
-				Device::CadenceGem => {
-					vec![
-						"-nic".to_owned(),
-						format!("{netdev_options},model=cadence_gem"),
-					]
-				}
-				device @ (Device::Rtl8139 | Device::VirtioNetMmio | Device::VirtioNetPci) => {
-					let mut netdev_args = vec![
-						"-netdev".to_owned(),
-						netdev_options.to_owned(),
-						"-device".to_owned(),
-					];
-
-					let mut device_arg = match device {
-						Device::VirtioNetPci => "virtio-net-pci,netdev=net0,disable-legacy=on",
-						Device::VirtioNetMmio => "virtio-net-device,netdev=net0",
-						Device::Rtl8139 => "rtl8139,netdev=net0",
-						_ => unreachable!(),
-					}
-					.to_owned();
-
-					if !self.no_default_virtio_features
-						&& (device == Device::VirtioNetPci || device == Device::VirtioNetMmio)
-					{
-						device_arg.push_str(",packed=on,mq=on");
-					}
-
-					netdev_args.push(device_arg);
-
-					netdev_args
-				}
 				Device::VirtioFsPci => {
 					let default_virtio_features = if !self.no_default_virtio_features {
 						",packed=on"

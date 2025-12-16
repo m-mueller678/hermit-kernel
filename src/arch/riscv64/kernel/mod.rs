@@ -1,10 +1,7 @@
 pub mod core_local;
 mod devicetree;
 pub mod interrupts;
-#[cfg(all(
-	any(feature = "virtio-net", feature = "console", feature = "gem-net"),
-	not(feature = "pci"),
-))]
+#[cfg(all(feature = "console", not(feature = "pci"),))]
 pub mod mmio;
 #[cfg(feature = "pci")]
 pub mod pci;

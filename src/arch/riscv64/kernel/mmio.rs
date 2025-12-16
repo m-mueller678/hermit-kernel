@@ -7,10 +7,6 @@ use hermit_sync::InterruptSpinMutex;
 
 #[cfg(feature = "console")]
 use crate::drivers::console::VirtioConsoleDriver;
-#[cfg(feature = "gem-net")]
-use crate::drivers::net::gem::GEMDriver;
-#[cfg(all(not(feature = "gem-net"), feature = "virtio-net"))]
-use crate::drivers::net::virtio::VirtioNetDriver;
 use crate::init_cell::InitCell;
 
 pub(crate) static MMIO_DRIVERS: InitCell<Vec<MmioDriver>> = InitCell::new(Vec::new());
@@ -32,12 +28,6 @@ impl MmioDriver {
 pub(crate) fn register_driver(drv: MmioDriver) {
 	MMIO_DRIVERS.with(|mmio_drivers| mmio_drivers.unwrap().push(drv));
 }
-
-#[cfg(feature = "gem-net")]
-pub(crate) type NetworkDevice = GEMDriver;
-
-#[cfg(all(not(feature = "gem-net"), feature = "virtio-net"))]
-pub(crate) type NetworkDevice = VirtioNetDriver;
 
 #[cfg(feature = "console")]
 pub(crate) fn get_console_driver() -> Option<&'static InterruptSpinMutex<VirtioConsoleDriver>> {

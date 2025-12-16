@@ -1,14 +1,12 @@
 #![allow(dead_code)]
 
-#[cfg(all(any(feature = "virtio-net", feature = "console"), not(feature = "pci")))]
+#[cfg(all(feature = "console", not(feature = "pci")))]
 use core::ptr::NonNull;
 
 use memory_addresses::PhysAddr;
-#[cfg(all(feature = "gem-net", not(feature = "pci")))]
-use memory_addresses::VirtAddr;
-#[cfg(all(any(feature = "virtio-net", feature = "console"), not(feature = "pci")))]
+#[cfg(all(feature = "console", not(feature = "pci")))]
 use virtio::mmio::{DeviceRegisters, DeviceRegistersVolatileFieldAccess};
-#[cfg(all(any(feature = "virtio-net", feature = "console"), not(feature = "pci")))]
+#[cfg(all(feature = "console", not(feature = "pci")))]
 use volatile::VolatileRef;
 
 use crate::arch::riscv64::kernel::interrupts::init_plic;
@@ -21,15 +19,11 @@ use crate::console::IoDevice;
 use crate::drivers::console::VirtioUART;
 #[cfg(all(feature = "console", not(feature = "pci")))]
 use crate::drivers::mmio::get_console_driver;
-#[cfg(all(feature = "gem-net", not(feature = "pci")))]
-use crate::drivers::net::gem;
 #[cfg(all(feature = "console", feature = "pci"))]
 use crate::drivers::pci::get_console_driver;
-#[cfg(all(any(feature = "virtio-net", feature = "console"), not(feature = "pci")))]
+#[cfg(all(feature = "console", not(feature = "pci")))]
 use crate::drivers::virtio::transport::mmio::{self as mmio_virtio, VirtioDriver};
 use crate::env;
-#[cfg(all(any(feature = "gem-net", feature = "virtio-net"), not(feature = "pci")))]
-use crate::executor::device::NETWORK_DEVICE;
 #[cfg(all(feature = "console", not(feature = "pci")))]
 use crate::kernel::mmio::register_driver;
 
@@ -112,61 +106,8 @@ pub fn init_drivers() {
 				}
 			}
 
-			// Init GEM
-			#[cfg(all(feature = "gem-net", not(feature = "pci")))]
-			if let Some(gem_node) = fdt.find_compatible(&["sifive,fu540-c000-gem"]) {
-				debug!("Found Ethernet controller");
-
-				let gem_region = gem_node
-					.reg()
-					.expect("reg property for GEM not found in FDT")
-					.next()
-					.unwrap();
-				let irq = gem_node
-					.interrupts()
-					.expect("interrupts property for GEM not found in FDT")
-					.next()
-					.unwrap();
-				let mac = gem_node
-					.property("local-mac-address")
-					.expect("local-mac-address property for GEM not found in FDT")
-					.value;
-				debug!("Local MAC address: {mac:x?}");
-				let mut phy_addr = u32::MAX;
-
-				let phy_node = gem_node
-					.children()
-					.next()
-					.expect("GEM node has no child node (i. e. ethernet-phy)");
-				if phy_node.name.contains("ethernet-phy") {
-					phy_addr = phy_node
-						.property("reg")
-						.expect("reg property for ethernet-phy not found in FDT")
-						.as_usize()
-						.unwrap() as u32;
-				} else {
-					warn!("Expected ethernet-phy node, found something else");
-				}
-
-				let gem_region_start = PhysAddr::new(gem_region.starting_address as u64);
-				debug!("Init GEM at {gem_region_start:p}, irq: {irq}, phy_addr: {phy_addr}");
-				assert!(
-					gem_region.size.unwrap() < usize::try_from(paging::HugePageSize::SIZE).unwrap()
-				);
-				paging::identity_map::<paging::HugePageSize>(gem_region_start);
-				match gem::init_device(
-					VirtAddr::new(gem_region_start.as_u64()),
-					irq.try_into().unwrap(),
-					phy_addr,
-					<[u8; 6]>::try_from(mac).expect("MAC with invalid length"),
-				) {
-					Ok(drv) => *NETWORK_DEVICE.lock() = Some(drv),
-					Err(err) => error!("Could not initialize GEM driver: {err}"),
-				}
-			}
-
 			// Init virtio-mmio
-			#[cfg(all(any(feature = "virtio-net", feature = "console"), not(feature = "pci")))]
+			#[cfg(all(feature = "console", not(feature = "pci")))]
 			if let Some(virtio_node) = fdt.find_compatible(&["virtio,mmio"]) {
 				debug!("Found virtio mmio device");
 				let virtio_region = virtio_node
@@ -225,16 +166,6 @@ pub fn init_drivers() {
 				}
 
 				match id {
-					#[cfg(all(feature = "virtio-net", not(feature = "gem-net")))]
-					virtio::Id::Net => {
-						debug!("Found virtio network card at {mmio:p}");
-
-						if let Ok(VirtioDriver::Network(drv)) =
-							mmio_virtio::init_device(mmio, irq.try_into().unwrap())
-						{
-							*NETWORK_DEVICE.lock() = Some(drv);
-						}
-					}
 					#[cfg(feature = "console")]
 					virtio::Id::Console => {
 						debug!("Found virtio console at {mmio:p}");
@@ -255,10 +186,7 @@ pub fn init_drivers() {
 		}
 	}
 
-	#[cfg(all(
-		any(feature = "virtio-net", feature = "console", feature = "gem-net"),
-		not(feature = "pci"),
-	))]
+	#[cfg(all(feature = "console", not(feature = "pci"),))]
 	super::mmio::MMIO_DRIVERS.finalize();
 
 	#[cfg(feature = "console")]

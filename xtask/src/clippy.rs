@@ -20,15 +20,8 @@ impl Clippy {
 
 			clippy().run()?;
 			clippy().arg("--features=common-os").run()?;
-			clippy()
-				.arg("--features=acpi,dns,fsgsbase,pci,smp,vga")
-				.run()?;
 			clippy().arg("--no-default-features").run()?;
 			clippy().arg("--all-features").run()?;
-			clippy()
-				.arg("--no-default-features")
-				.arg("--features=tcp")
-				.run()?;
 			clippy()
 				.arg("--no-default-features")
 				.arg("--features=acpi,fsgsbase,pci,smp,vga")
@@ -38,13 +31,7 @@ impl Clippy {
 				Arch::X86_64 => {
 					clippy().arg("--features=shell").run()?;
 				}
-				Arch::Aarch64 | Arch::Aarch64Be => {}
-				Arch::Riscv64 => {
-					clippy()
-						.arg("--no-default-features")
-						.arg("--features=gem-net,tcp")
-						.run()?;
-				}
+				Arch::Riscv64 | Arch::Aarch64 | Arch::Aarch64Be => {}
 			}
 
 			clippy()

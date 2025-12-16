@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::future;
 use core::task::Poll;
@@ -40,17 +39,6 @@ impl VsockEndpoint {
 		Self { port, cid }
 	}
 }
-
-pub struct NullSocket;
-
-impl NullSocket {
-	pub const fn new() -> Self {
-		Self {}
-	}
-}
-
-#[async_trait]
-impl ObjectInterface for NullSocket {}
 
 pub struct Socket {
 	port: u32,
@@ -150,8 +138,6 @@ impl ObjectInterface for Socket {
 				}
 				VSOCK_MAP.lock().bind(ep.port)
 			}
-			#[cfg(feature = "net")]
-			_ => Err(Errno::Inval),
 		}
 	}
 
@@ -209,19 +195,7 @@ impl ObjectInterface for Socket {
 				})
 				.await
 			}
-			#[cfg(feature = "net")]
-			_ => Err(Errno::Inval),
 		}
-	}
-
-	async fn getpeername(&self) -> io::Result<Option<Endpoint>> {
-		let guard = VSOCK_MAP.lock();
-		let raw = guard.get_socket(self.port).ok_or(Errno::Inval)?;
-
-		Ok(Some(Endpoint::Vsock(VsockEndpoint::new(
-			raw.remote_port,
-			raw.remote_cid,
-		))))
 	}
 
 	async fn getsockname(&self) -> io::Result<Option<Endpoint>> {
@@ -237,9 +211,7 @@ impl ObjectInterface for Socket {
 		Ok(())
 	}
 
-	async fn accept(
-		&mut self,
-	) -> io::Result<(Arc<async_lock::RwLock<dyn ObjectInterface>>, Endpoint)> {
+	async fn accept(&mut self) -> io::Result<Endpoint> {
 		let port = self.port;
 		let cid = self.cid;
 
@@ -295,10 +267,7 @@ impl ObjectInterface for Socket {
 		})
 		.await?;
 
-		Ok((
-			Arc::new(async_lock::RwLock::new(NullSocket::new())),
-			Endpoint::Vsock(endpoint),
-		))
+		Ok(Endpoint::Vsock(endpoint))
 	}
 
 	async fn shutdown(&self, _how: i32) -> io::Result<()> {

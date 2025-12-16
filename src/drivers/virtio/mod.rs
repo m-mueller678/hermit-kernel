@@ -29,12 +29,6 @@ pub mod error {
 	pub use crate::drivers::console::error::VirtioConsoleError;
 	#[cfg(feature = "fuse")]
 	pub use crate::drivers::fs::virtio_fs::error::VirtioFsError;
-	#[cfg(all(
-		not(all(target_arch = "riscv64", feature = "gem-net", not(feature = "pci"))),
-		not(feature = "rtl8139"),
-		feature = "virtio-net",
-	))]
-	pub use crate::drivers::net::virtio::error::VirtioNetError;
 	#[cfg(feature = "pci")]
 	use crate::drivers::pci::error::PciError;
 	#[cfg(feature = "vsock")]
@@ -67,14 +61,6 @@ pub mod error {
 
 		#[error("Device with id {0:#x} not supported.")]
 		DevNotSupported(u16),
-
-		#[cfg(all(
-			not(all(target_arch = "riscv64", feature = "gem-net", not(feature = "pci"))),
-			not(feature = "rtl8139"),
-			feature = "virtio-net",
-		))]
-		#[error(transparent)]
-		NetDriver(VirtioNetError),
 
 		#[cfg(feature = "fuse")]
 		#[error(transparent)]

@@ -6,8 +6,6 @@ use core::task::Poll::{Pending, Ready};
 use core::time::Duration;
 
 use async_trait::async_trait;
-#[cfg(feature = "net")]
-use smoltcp::wire::{IpEndpoint, IpListenEndpoint};
 
 use crate::arch::kernel::core_local::core_scheduler;
 use crate::errno::Errno;
@@ -16,7 +14,7 @@ use crate::fs::{FileAttr, SeekWhence};
 use crate::io;
 
 mod eventfd;
-#[cfg(any(feature = "net", feature = "vsock"))]
+#[cfg(feature = "vsock")]
 pub(crate) mod socket;
 pub(crate) mod stdio;
 
@@ -24,20 +22,16 @@ pub(crate) const STDIN_FILENO: FileDescriptor = 0;
 pub(crate) const STDOUT_FILENO: FileDescriptor = 1;
 pub(crate) const STDERR_FILENO: FileDescriptor = 2;
 
-#[cfg(any(feature = "net", feature = "vsock"))]
+#[cfg(feature = "vsock")]
 #[derive(Debug)]
 pub(crate) enum Endpoint {
-	#[cfg(feature = "net")]
-	Ip(IpEndpoint),
 	#[cfg(feature = "vsock")]
 	Vsock(socket::vsock::VsockEndpoint),
 }
 
-#[cfg(any(feature = "net", feature = "vsock"))]
+#[cfg(feature = "vsock")]
 #[derive(Debug)]
 pub(crate) enum ListenEndpoint {
-	#[cfg(feature = "net")]
-	Ip(IpListenEndpoint),
 	#[cfg(feature = "vsock")]
 	Vsock(socket::vsock::VsockListenEndpoint),
 }
@@ -232,76 +226,49 @@ pub(crate) trait ObjectInterface: Sync + Send {
 	}
 
 	/// `accept` a connection on a socket
-	#[cfg(any(feature = "net", feature = "vsock"))]
-	async fn accept(
-		&mut self,
-	) -> io::Result<(Arc<async_lock::RwLock<dyn ObjectInterface>>, Endpoint)> {
+	#[cfg(feature = "vsock")]
+	async fn accept(&mut self) -> io::Result<Endpoint> {
 		Err(Errno::Inval)
 	}
 
 	/// initiate a connection on a socket
-	#[cfg(any(feature = "net", feature = "vsock"))]
+	#[cfg(feature = "vsock")]
 	async fn connect(&mut self, _endpoint: Endpoint) -> io::Result<()> {
 		Err(Errno::Inval)
 	}
 
 	/// `bind` a name to a socket
-	#[cfg(any(feature = "net", feature = "vsock"))]
+	#[cfg(feature = "vsock")]
 	async fn bind(&mut self, _name: ListenEndpoint) -> io::Result<()> {
 		Err(Errno::Inval)
 	}
 
 	/// `listen` for connections on a socket
-	#[cfg(any(feature = "net", feature = "vsock"))]
+	#[cfg(feature = "vsock")]
 	async fn listen(&mut self, _backlog: i32) -> io::Result<()> {
 		Err(Errno::Inval)
 	}
 
 	/// `setsockopt` sets options on sockets
-	#[cfg(any(feature = "net", feature = "vsock"))]
+	#[cfg(feature = "vsock")]
 	async fn setsockopt(&self, _opt: SocketOption, _optval: bool) -> io::Result<()> {
 		Err(Errno::Notsock)
 	}
 
 	/// `getsockopt` gets options on sockets
-	#[cfg(any(feature = "net", feature = "vsock"))]
+	#[cfg(feature = "vsock")]
 	async fn getsockopt(&self, _opt: SocketOption) -> io::Result<bool> {
 		Err(Errno::Notsock)
 	}
 
 	/// `getsockname` gets socket name
-	#[cfg(any(feature = "net", feature = "vsock"))]
+	#[cfg(feature = "vsock")]
 	async fn getsockname(&self) -> io::Result<Option<Endpoint>> {
 		Ok(None)
 	}
 
-	/// `getpeername` get address of connected peer
-	#[cfg(any(feature = "net", feature = "vsock"))]
-	#[allow(dead_code)]
-	async fn getpeername(&self) -> io::Result<Option<Endpoint>> {
-		Ok(None)
-	}
-
-	/// receive a message from a socket
-	#[cfg(any(feature = "net", feature = "vsock"))]
-	async fn recvfrom(&self, _buffer: &mut [MaybeUninit<u8>]) -> io::Result<(usize, Endpoint)> {
-		Err(Errno::Nosys)
-	}
-
-	/// send a message from a socket
-	///
-	/// The sendto() function shall send a message.
-	/// If the socket is a connectionless-mode socket, the message shall
-	/// If a peer address has been prespecified, either the message shall
-	/// be sent to the address specified by dest_addr (overriding the pre-specified peer
-	/// address).
-	#[cfg(any(feature = "net", feature = "vsock"))]
-	async fn sendto(&self, _buffer: &[u8], _endpoint: Endpoint) -> io::Result<usize> {
-		Err(Errno::Nosys)
-	}
-
 	/// shut down part of a full-duplex connection
-	#[cfg(any(feature = "net", feature = "vsock"))]
+	#[cfg(feature = "vsock")]
 	async fn shutdown(&self, _how: i32) -> io::Result<()> {
 		Err(Errno::Nosys)
 	}

@@ -30,12 +30,6 @@ use crate::drivers::console::VirtioConsoleDriver;
 use crate::drivers::error::DriverError;
 #[cfg(feature = "fuse")]
 use crate::drivers::fs::virtio_fs::VirtioFsDriver;
-#[cfg(all(
-	not(all(target_arch = "riscv64", feature = "gem-net", not(feature = "pci"))),
-	not(feature = "rtl8139"),
-	feature = "virtio-net",
-))]
-use crate::drivers::net::virtio::VirtioNetDriver;
 use crate::drivers::pci::PciDevice;
 use crate::drivers::pci::error::PciError;
 use crate::drivers::virtio::VirtioIdExt;
@@ -810,28 +804,6 @@ pub(crate) fn init_device(
 	let id = virtio::Id::from(u8::try_from(device_id - 0x1040).unwrap());
 
 	match id {
-		#[cfg(all(
-			not(all(target_arch = "riscv64", feature = "gem-net", not(feature = "pci"))),
-			not(feature = "rtl8139"),
-			feature = "virtio-net",
-		))]
-		virtio::Id::Net => match VirtioNetDriver::init(device) {
-			Ok(virt_net_drv) => {
-				info!("Virtio network driver initialized.");
-
-				let irq = device.get_irq().unwrap();
-				crate::arch::interrupts::add_irq_name(irq, "virtio");
-				info!("Virtio interrupt handler at line {irq}");
-
-				Ok(VirtioDriver::Network(virt_net_drv))
-			}
-			Err(virtio_error) => {
-				error!(
-					"Virtio networkd driver could not be initialized with device: {device_id:x}"
-				);
-				Err(DriverError::InitVirtioDevFail(virtio_error))
-			}
-		},
 		#[cfg(feature = "console")]
 		virtio::Id::Console => match VirtioConsoleDriver::init(device) {
 			Ok(virt_console_drv) => {
@@ -898,12 +870,6 @@ pub(crate) fn init_device(
 }
 
 pub(crate) enum VirtioDriver {
-	#[cfg(all(
-		not(all(target_arch = "riscv64", feature = "gem-net", not(feature = "pci"))),
-		not(feature = "rtl8139"),
-		feature = "virtio-net",
-	))]
-	Network(VirtioNetDriver),
 	#[cfg(feature = "console")]
 	Console(Box<VirtioConsoleDriver>),
 	#[cfg(feature = "vsock")]

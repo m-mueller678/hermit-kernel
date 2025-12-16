@@ -17,11 +17,7 @@ use crate::console::IoDevice;
 use crate::drivers::console::VirtioConsoleDriver;
 #[cfg(feature = "console")]
 use crate::drivers::console::VirtioUART;
-#[cfg(feature = "virtio-net")]
-use crate::drivers::net::virtio::VirtioNetDriver;
 use crate::drivers::virtio::transport::mmio::{self as mmio_virtio, VirtioDriver};
-#[cfg(feature = "virtio-net")]
-use crate::executor::device::NETWORK_DEVICE;
 use crate::init_cell::InitCell;
 use crate::mm::PhysAddr;
 
@@ -45,9 +41,6 @@ impl MmioDriver {
 pub(crate) fn register_driver(drv: MmioDriver) {
 	MMIO_DRIVERS.with(|mmio_drivers| mmio_drivers.unwrap().push(drv));
 }
-
-#[cfg(feature = "virtio-net")]
-pub(crate) type NetworkDevice = VirtioNetDriver;
 
 #[cfg(feature = "console")]
 pub(crate) fn get_console_driver() -> Option<&'static InterruptTicketMutex<VirtioConsoleDriver>> {
@@ -119,48 +112,6 @@ pub fn init_drivers() {
 							let cpu_id: usize = 0;
 
 							match id {
-								#[cfg(feature = "virtio-net")]
-								virtio::Id::Net => {
-									debug!(
-										"Found network card at {mmio:p}, irq: {irq}, type: {irqtype}, flags: {irqflags}"
-									);
-									if let Ok(VirtioDriver::Network(drv)) =
-										mmio_virtio::init_device(mmio, irq.try_into().unwrap())
-										&& let Some(gic) = GIC.lock().as_mut()
-									{
-										// enable timer interrupt
-										let virtio_irqid = if irqtype == 1 {
-											IntId::ppi(irq)
-										} else if irqtype == 0 {
-											IntId::spi(irq)
-										} else {
-											panic!("Invalid interrupt type");
-										};
-										gic.set_interrupt_priority(
-											virtio_irqid,
-											Some(cpu_id),
-											0x00,
-										);
-										if (irqflags & 0xf) == 4 || (irqflags & 0xf) == 8 {
-											gic.set_trigger(
-												virtio_irqid,
-												Some(cpu_id),
-												Trigger::Level,
-											);
-										} else if (irqflags & 0xf) == 2 || (irqflags & 0xf) == 1 {
-											gic.set_trigger(
-												virtio_irqid,
-												Some(cpu_id),
-												Trigger::Edge,
-											);
-										} else {
-											panic!("Invalid interrupt level!");
-										}
-										gic.enable_interrupt(virtio_irqid, Some(cpu_id), true);
-
-										*NETWORK_DEVICE.lock() = Some(drv);
-									}
-								}
 								#[cfg(feature = "console")]
 								virtio::Id::Console => {
 									debug!(

@@ -196,10 +196,6 @@ impl VsockMap {
 		Err(Errno::Badf)
 	}
 
-	pub fn get_socket(&self, port: u32) -> Option<&RawSocket> {
-		self.port_map.get(&port)
-	}
-
 	pub fn get_mut_socket(&mut self, port: u32) -> Option<&mut RawSocket> {
 		self.port_map.get_mut(&port)
 	}
