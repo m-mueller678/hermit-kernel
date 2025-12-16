@@ -75,8 +75,6 @@ mod init_cell;
 pub mod io;
 pub mod mm;
 pub mod scheduler;
-#[cfg(feature = "shell")]
-mod shell;
 mod synch;
 pub mod syscalls;
 pub mod time;
