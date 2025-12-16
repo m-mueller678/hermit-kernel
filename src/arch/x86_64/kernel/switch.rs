@@ -4,7 +4,6 @@ use x86_64::registers::control::Cr0Flags;
 
 use crate::set_current_kernel_stack;
 
-#[cfg(not(feature = "common-os"))]
 macro_rules! push_gs {
 	() => {
 		r#"
@@ -12,56 +11,9 @@ macro_rules! push_gs {
 	};
 }
 
-#[cfg(not(feature = "common-os"))]
 macro_rules! pop_gs {
 	() => {
 		r#"
-		"#
-	};
-}
-
-#[cfg(all(feature = "fsgsbase", feature = "common-os"))]
-macro_rules! push_gs {
-	() => {
-		r#"
-		rdfsbase rax
-		push rax
-		"#
-	};
-}
-
-#[cfg(all(feature = "fsgsbase", feature = "common-os"))]
-macro_rules! pop_gs {
-	() => {
-		r#"
-		pop rax
-		wrfsbase rax
-		"#
-	};
-}
-
-#[cfg(all(not(feature = "fsgsbase"), feature = "common-os"))]
-macro_rules! push_gs {
-	() => {
-		r#"
-		mov ecx, 0xc0000101 // Kernel GS.Base Model Specific Register
-		rdmsr
-		sub rsp, 8
-		mov [rsp+4], edx
-		mov [rsp], eax
-		"#
-	};
-}
-
-#[cfg(all(not(feature = "fsgsbase"), feature = "common-os"))]
-macro_rules! pop_gs {
-	() => {
-		r#"
-		mov ecx, 0xc0000101 // Kernel GS.Base Model Specific Register
-		mov edx, [rsp+4]
-		mov eax, [rsp]
-		add rsp, 8
-		wrmsr
 		"#
 	};
 }

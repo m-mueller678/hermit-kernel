@@ -37,7 +37,6 @@ harness = false
 default = ["kernel-stack", "pci", "pci-ids", "acpi", "fsgsbase", "smp", "fuse",  "vsock"]
 acpi = []
 alloc-stats = ["talc/counters"]
-common-os = []
 console = ["virtio"]
 fs = ["fuse"]
 fsgsbase = []

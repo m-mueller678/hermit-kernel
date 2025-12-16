@@ -15,7 +15,6 @@ pub use x86_64::structures::idt::InterruptStackFrame as ExceptionStackFrame;
 use crate::arch::x86_64::kernel::core_local::{core_scheduler, increment_irq_counter};
 use crate::arch::x86_64::kernel::{apic, processor};
 use crate::arch::x86_64::mm::paging::{BasePageSize, PageSize, page_fault_handler};
-use crate::arch::x86_64::swapgs;
 use crate::drivers::InterruptHandlerQueue;
 #[cfg(not(feature = "pci"))]
 use crate::drivers::mmio::get_interrupt_handlers;
@@ -165,10 +164,9 @@ pub(crate) fn install_handlers() {
 	IRQ_HANDLERS.set(get_interrupt_handlers()).unwrap();
 }
 
-fn handle_interrupt(stack_frame: ExceptionStackFrame, index: u8, _error_code: Option<u64>) {
+fn handle_interrupt(_stack_frame: ExceptionStackFrame, index: u8, _error_code: Option<u64>) {
 	debug!("received interrupt {index}");
 
-	crate::arch::x86_64::swapgs(&stack_frame);
 	use crate::arch::kernel::core_local::core_scheduler;
 	use crate::scheduler::PerCoreSchedulerExt;
 
@@ -186,7 +184,6 @@ fn handle_interrupt(stack_frame: ExceptionStackFrame, index: u8, _error_code: Op
 	crate::executor::run();
 
 	core_scheduler().reschedule();
-	crate::arch::x86_64::swapgs(&stack_frame);
 }
 
 fn abort(stack_frame: ExceptionStackFrame, index: u8, error_code: Option<u64>) {
@@ -197,49 +194,41 @@ fn abort(stack_frame: ExceptionStackFrame, index: u8, error_code: Option<u64>) {
 }
 
 extern "x86-interrupt" fn divide_error_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Divide Error (#DE) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn debug_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Debug (#DB) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn nmi_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Non-Maskable Interrupt (NMI) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn breakpoint_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Breakpoint (#BP) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn overflow_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Overflow (#OF) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn bound_range_exceeded_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("BOUND Range Exceeded (#BR) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn invalid_opcode_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Invalid Opcode (#UD) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
-extern "x86-interrupt" fn device_not_available_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
+extern "x86-interrupt" fn device_not_available_exception(_stack_frame: ExceptionStackFrame) {
 	// We set the CR0_TASK_SWITCHED flag every time we switch to a task.
 	// This causes the "Device Not Available" Exception (int #7) to be thrown as soon as we use the FPU for the first time.
 
@@ -252,11 +241,9 @@ extern "x86-interrupt" fn device_not_available_exception(stack_frame: ExceptionS
 
 	// Let the scheduler set up the FPU for the current task.
 	core_scheduler().fpu_switch();
-	swapgs(&stack_frame);
 }
 
 extern "x86-interrupt" fn invalid_tss_exception(stack_frame: ExceptionStackFrame, _code: u64) {
-	swapgs(&stack_frame);
 	error!("Invalid TSS (#TS) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
@@ -265,7 +252,6 @@ extern "x86-interrupt" fn segment_not_present_exception(
 	stack_frame: ExceptionStackFrame,
 	_code: u64,
 ) {
-	swapgs(&stack_frame);
 	error!("Segment Not Present (#NP) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
@@ -274,7 +260,6 @@ extern "x86-interrupt" fn stack_segment_fault_exception(
 	stack_frame: ExceptionStackFrame,
 	error_code: u64,
 ) {
-	swapgs(&stack_frame);
 	error!("Stack Segment Fault (#SS) Exception: {stack_frame:#?}, error {error_code:#X}");
 	scheduler::abort();
 }
@@ -283,7 +268,6 @@ extern "x86-interrupt" fn general_protection_exception(
 	stack_frame: ExceptionStackFrame,
 	error_code: u64,
 ) {
-	swapgs(&stack_frame);
 	error!("General Protection (#GP) Exception: {stack_frame:#?}, error {error_code:#X}");
 	error!(
 		"fs = {:#X}, gs = {:#X}",
@@ -297,37 +281,31 @@ extern "x86-interrupt" fn double_fault_exception(
 	stack_frame: ExceptionStackFrame,
 	error_code: u64,
 ) -> ! {
-	swapgs(&stack_frame);
 	error!("Double Fault (#DF) Exception: {stack_frame:#?}, error {error_code:#X}");
 	scheduler::abort()
 }
 
 extern "x86-interrupt" fn floating_point_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Floating-Point Error (#MF) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn alignment_check_exception(stack_frame: ExceptionStackFrame, _code: u64) {
-	swapgs(&stack_frame);
 	error!("Alignment Check (#AC) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn machine_check_exception(stack_frame: ExceptionStackFrame) -> ! {
-	swapgs(&stack_frame);
 	error!("Machine Check (#MC) Exception: {stack_frame:#?}");
 	scheduler::abort()
 }
 
 extern "x86-interrupt" fn simd_floating_point_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("SIMD Floating-Point (#XM) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 extern "x86-interrupt" fn virtualization_exception(stack_frame: ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Virtualization (#VE) Exception: {stack_frame:#?}");
 	scheduler::abort();
 }

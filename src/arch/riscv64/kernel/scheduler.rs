@@ -309,7 +309,6 @@ impl TaskFrame for Task {
 	fn create_stack_frame(&mut self, func: unsafe extern "C" fn(usize), arg: usize) {
 		// Check if the task (process or thread) uses Thread-Local-Storage.
 		// check is TLS is already allocated
-		#[cfg(not(feature = "common-os"))]
 		if self.tls.is_none() {
 			use crate::scheduler::task::tls::Tls;
 
@@ -326,7 +325,6 @@ impl TaskFrame for Task {
 			stack -= mem::size_of::<State>();
 
 			let state = stack.as_mut_ptr::<State>();
-			#[cfg(not(feature = "common-os"))]
 			if let Some(tls) = &self.tls {
 				(*state).tp = tls.thread_ptr() as usize;
 			}

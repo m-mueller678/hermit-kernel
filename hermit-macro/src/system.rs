@@ -177,7 +177,7 @@ fn emit_func(func: ItemFn, sig: &ParsedSig, errno: bool) -> Result<ItemFn> {
 			cfg_if::cfg_if! {
 				if #[cfg(all(
 					feature = "kernel-stack",
-					not(any(target_arch = "riscv64", feature = "common-os")),
+					not(target_arch = "riscv64"),
 				))] {
 					unsafe { crate::arch::kernel::kernel_stack::#kernel_function_ident(#(#args,)* #kernel_ident) }
 				} else {
@@ -257,7 +257,7 @@ mod tests {
 				cfg_if::cfg_if! {
 					if #[cfg(all(
 						feature = "kernel-stack",
-						not(any(target_arch = "riscv64", feature = "common-os")),
+						not(target_arch = "riscv64"),
 					))] {
 						unsafe { crate::arch::kernel::kernel_stack::kernel_function2(a, b, _sys_test) }
 					} else {
@@ -325,7 +325,7 @@ mod tests {
 				cfg_if::cfg_if! {
 					if #[cfg(all(
 						feature = "kernel-stack",
-						not(any(target_arch = "riscv64", feature = "common-os")),
+						not(target_arch = "riscv64"),
 					))] {
 						unsafe { crate::arch::kernel::kernel_stack::kernel_function2(a, b, _sys_test) }
 					} else {
@@ -395,7 +395,7 @@ mod tests {
 				cfg_if::cfg_if! {
 					if #[cfg(all(
 						feature = "kernel-stack",
-						not(any(target_arch = "riscv64", feature = "common-os")),
+						not(target_arch = "riscv64"),
 					))] {
 						unsafe { crate::arch::kernel::kernel_stack::kernel_function2(a, b, _sys_test) }
 					} else {

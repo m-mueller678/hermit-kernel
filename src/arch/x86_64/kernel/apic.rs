@@ -28,7 +28,6 @@ use crate::arch::x86_64::mm::paging;
 use crate::arch::x86_64::mm::paging::{
 	BasePageSize, PageSize, PageTableEntryFlags, PageTableEntryFlagsExt,
 };
-use crate::arch::x86_64::swapgs;
 use crate::config::*;
 use crate::mm::{PageAlloc, PageBox, PageRangeAllocator};
 use crate::scheduler::CoreId;
@@ -257,8 +256,7 @@ impl fmt::Display for IoApicRecord {
 }
 
 #[cfg(feature = "smp")]
-extern "x86-interrupt" fn tlb_flush_handler(stack_frame: interrupts::ExceptionStackFrame) {
-	swapgs(&stack_frame);
+extern "x86-interrupt" fn tlb_flush_handler(_stack_frame: interrupts::ExceptionStackFrame) {
 	debug!("Received TLB Flush Interrupt");
 	increment_irq_counter(TLB_FLUSH_INTERRUPT_NUMBER);
 	let (frame, val) = Cr3::read_raw();
@@ -266,11 +264,9 @@ extern "x86-interrupt" fn tlb_flush_handler(stack_frame: interrupts::ExceptionSt
 		Cr3::write_raw(frame, val);
 	}
 	eoi();
-	swapgs(&stack_frame);
 }
 
 extern "x86-interrupt" fn error_interrupt_handler(stack_frame: interrupts::ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("APIC LVT Error Interrupt");
 	error!("ESR: {:#X}", local_apic_read(IA32_X2APIC_ESR));
 	error!("{stack_frame:#?}");
@@ -279,14 +275,12 @@ extern "x86-interrupt" fn error_interrupt_handler(stack_frame: interrupts::Excep
 }
 
 extern "x86-interrupt" fn spurious_interrupt_handler(stack_frame: interrupts::ExceptionStackFrame) {
-	swapgs(&stack_frame);
 	error!("Spurious Interrupt: {stack_frame:#?}");
 	scheduler::abort();
 }
 
 #[cfg(feature = "smp")]
-extern "x86-interrupt" fn wakeup_handler(stack_frame: interrupts::ExceptionStackFrame) {
-	swapgs(&stack_frame);
+extern "x86-interrupt" fn wakeup_handler(_stack_frame: interrupts::ExceptionStackFrame) {
 	use crate::scheduler::PerCoreSchedulerExt;
 
 	debug!("Received Wakeup Interrupt");
@@ -297,7 +291,6 @@ extern "x86-interrupt" fn wakeup_handler(stack_frame: interrupts::ExceptionStack
 	if core_scheduler.is_scheduling() {
 		core_scheduler.reschedule();
 	}
-	swapgs(&stack_frame);
 }
 
 #[inline]

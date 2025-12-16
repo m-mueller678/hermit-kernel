@@ -136,52 +136,6 @@ pub(crate) fn init() {
 	let mut map_size;
 	let heap_start_addr;
 
-	#[cfg(feature = "common-os")]
-	{
-		info!("Using HermitOS as common OS!");
-
-		// we reserve at least 75% of the memory for the user space
-		let reserve: usize = (avail_mem * 75) / 100;
-		// 64 MB is enough as kernel heap
-		let reserve = core::cmp::min(reserve, 0x0400_0000);
-
-		let virt_size: usize = reserve.align_down(LargePageSize::SIZE as usize);
-		let layout = PageLayout::from_size_align(virt_size, LargePageSize::SIZE as usize).unwrap();
-		let page_range = PageAlloc::allocate(layout).unwrap();
-		let virt_addr = VirtAddr::from(page_range.start());
-		heap_start_addr = virt_addr;
-
-		info!(
-			"Heap: size {} MB, start address {:p}",
-			virt_size >> 20,
-			virt_addr
-		);
-
-		#[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
-		if has_1gib_pages && virt_size > HugePageSize::SIZE as usize {
-			// Mount large pages to the next huge page boundary
-			let npages = (virt_addr.align_up(HugePageSize::SIZE) - virt_addr) as usize
-				/ LargePageSize::SIZE as usize;
-			if let Err(n) = paging::map_heap::<LargePageSize>(virt_addr, npages) {
-				map_addr = virt_addr + n as u64 * LargePageSize::SIZE;
-				map_size = virt_size - (map_addr - virt_addr) as usize;
-			} else {
-				map_addr = virt_addr.align_up(HugePageSize::SIZE);
-				map_size = virt_size - (map_addr - virt_addr) as usize;
-			}
-		} else {
-			map_addr = virt_addr;
-			map_size = virt_size;
-		}
-
-		#[cfg(not(any(target_arch = "x86_64", target_arch = "riscv64")))]
-		{
-			map_addr = virt_addr;
-			map_size = virt_size;
-		}
-	}
-
-	#[cfg(not(feature = "common-os"))]
 	{
 		// we reserve 10% of the memory for stack allocations
 		#[cfg(not(feature = "mman"))]

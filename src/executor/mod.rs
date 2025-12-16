@@ -102,7 +102,7 @@ pub(crate) fn run() {
 
 /// Spawns a future on the executor.
 #[cfg_attr(
-	not(any(feature = "alloc-stats", feature = "shell", feature = "vsock")),
+	not(any(feature = "alloc-stats", feature = "vsock")),
 	expect(dead_code)
 )]
 pub(crate) fn spawn<F>(future: F)

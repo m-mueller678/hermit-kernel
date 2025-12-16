@@ -1,6 +1,5 @@
 #![allow(clippy::type_complexity)]
 
-#[cfg(not(feature = "common-os"))]
 pub(crate) mod tls;
 
 use alloc::collections::{LinkedList, VecDeque};
@@ -16,7 +15,6 @@ use hashbrown::HashMap;
 use hermit_sync::{OnceCell, RwSpinLock};
 use memory_addresses::VirtAddr;
 
-#[cfg(not(feature = "common-os"))]
 use self::tls::Tls;
 use crate::arch::core_local::*;
 use crate::arch::scheduler::TaskStacks;
@@ -395,11 +393,7 @@ pub(crate) struct Task {
 		>,
 	>,
 	/// Task Thread-Local-Storage (TLS)
-	#[cfg(not(feature = "common-os"))]
 	pub tls: Option<Tls>,
-	// Physical address of the 1st level page table
-	#[cfg(all(target_arch = "x86_64", feature = "common-os"))]
-	pub root_page_table: usize,
 }
 
 pub(crate) trait TaskFrame {
@@ -432,10 +426,7 @@ impl Task {
 			core_id,
 			stacks,
 			object_map,
-			#[cfg(not(feature = "common-os"))]
 			tls: None,
-			#[cfg(all(target_arch = "x86_64", feature = "common-os"))]
-			root_page_table: arch::create_new_root_page_table(),
 		}
 	}
 
@@ -496,10 +487,7 @@ impl Task {
 			core_id,
 			stacks: TaskStacks::from_boot_stacks(),
 			object_map: OBJECT_MAP.get().unwrap().clone(),
-			#[cfg(not(feature = "common-os"))]
 			tls: None,
-			#[cfg(all(target_arch = "x86_64", feature = "common-os"))]
-			root_page_table: *crate::scheduler::BOOT_ROOT_PAGE_TABLE.get().unwrap(),
 		}
 	}
 }

@@ -19,21 +19,12 @@ impl Clippy {
 			let clippy = || cmd!(sh, "cargo clippy --target={triple} --all-targets");
 
 			clippy().run()?;
-			clippy().arg("--features=common-os").run()?;
 			clippy().arg("--no-default-features").run()?;
 			clippy().arg("--all-features").run()?;
 			clippy()
 				.arg("--no-default-features")
 				.arg("--features=acpi,fsgsbase,pci,smp,vga")
 				.run()?;
-
-			match *arch {
-				Arch::X86_64 => {
-					clippy().arg("--features=shell").run()?;
-				}
-				Arch::Riscv64 | Arch::Aarch64 | Arch::Aarch64Be => {}
-			}
-
 			clippy()
 				.arg("--no-default-features")
 				.arg("--features=acpi,fsgsbase,newlib,smp,vga")

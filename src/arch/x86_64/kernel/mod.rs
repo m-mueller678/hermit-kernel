@@ -1,5 +1,3 @@
-#[cfg(feature = "common-os")]
-use core::arch::asm;
 use core::ptr;
 use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
 
@@ -30,8 +28,6 @@ pub mod serial;
 #[cfg(target_os = "none")]
 mod start;
 pub mod switch;
-#[cfg(feature = "common-os")]
-mod syscall;
 pub(crate) mod systemtime;
 #[cfg(feature = "vga")]
 pub mod vga;
@@ -216,147 +212,5 @@ unsafe extern "C" fn pre_init(boot_info: Option<&'static RawBootInfo>, cpu_id: u
 		}
 		#[cfg(feature = "smp")]
 		crate::application_processor_main();
-	}
-}
-
-#[cfg(feature = "common-os")]
-const LOADER_START: usize = 0x0100_0000_0000;
-#[cfg(feature = "common-os")]
-const LOADER_STACK_SIZE: usize = 0x8000;
-
-#[cfg(feature = "common-os")]
-pub fn load_application<F, T>(code_size: u64, tls_size: u64, func: F) -> T
-where
-	F: FnOnce(&'static mut [u8], Option<&'static mut [u8]>) -> T,
-{
-	use core::slice;
-
-	use align_address::Align;
-	use free_list::PageLayout;
-	use x86_64::structures::paging::{PageSize, Size4KiB as BasePageSize};
-
-	use crate::arch::x86_64::mm::paging::{self, PageTableEntryFlags, PageTableEntryFlagsExt};
-	use crate::mm::{FrameAlloc, PageRangeAllocator};
-
-	let code_size = (code_size as usize + LOADER_STACK_SIZE).align_up(BasePageSize::SIZE as usize);
-	let layout = PageLayout::from_size_align(code_size, BasePageSize::SIZE as usize).unwrap();
-	let frame_range = FrameAlloc::allocate(layout).unwrap();
-	let physaddr = PhysAddr::from(frame_range.start());
-
-	let mut flags = PageTableEntryFlags::empty();
-	flags.normal().writable().user().execute_enable();
-	paging::map::<BasePageSize>(
-		VirtAddr::from(LOADER_START),
-		physaddr,
-		code_size / BasePageSize::SIZE as usize,
-		flags,
-	);
-
-	let code_slice = unsafe { slice::from_raw_parts_mut(LOADER_START as *mut u8, code_size) };
-
-	if tls_size > 0 {
-		// To access TLS blocks on x86-64, TLS offsets are *subtracted* from the thread register value.
-		// So the thread pointer needs to be `block_ptr + tls_offset`.
-		// GNU style TLS requires `fs:0` to represent the same address as the thread pointer.
-		// Since the thread pointer points to the end of the TLS blocks, we need to store it there.
-		let tcb_size = core::mem::size_of::<*mut ()>();
-		let tls_offset = tls_size as usize;
-
-		let tls_memsz = (tls_offset + tcb_size).align_up(BasePageSize::SIZE as usize);
-		let layout = PageLayout::from_size(tls_memsz).unwrap();
-		let frame_range = FrameAlloc::allocate(layout).unwrap();
-		let physaddr = PhysAddr::from(frame_range.start());
-
-		let mut flags = PageTableEntryFlags::empty();
-		flags.normal().writable().user().execute_disable();
-		let tls_virt = VirtAddr::from(LOADER_START + code_size + BasePageSize::SIZE as usize);
-		paging::map::<BasePageSize>(
-			tls_virt,
-			physaddr,
-			tls_memsz / BasePageSize::SIZE as usize,
-			flags,
-		);
-		let block =
-			unsafe { slice::from_raw_parts_mut(tls_virt.as_mut_ptr(), tls_offset + tcb_size) };
-		for elem in block.iter_mut() {
-			*elem = 0;
-		}
-
-		// thread_ptr = block_ptr + tls_offset
-		let thread_ptr = block[tls_offset..].as_mut_ptr().cast::<()>();
-		unsafe {
-			thread_ptr.cast::<*mut ()>().write(thread_ptr);
-		}
-		crate::arch::x86_64::kernel::processor::writefs(thread_ptr as usize);
-
-		func(code_slice, Some(block))
-	} else {
-		func(code_slice, None)
-	}
-}
-
-#[cfg(feature = "common-os")]
-pub unsafe fn jump_to_user_land(entry_point: usize, code_size: usize, arg: &[&str]) -> ! {
-	use alloc::ffi::CString;
-
-	use align_address::Align;
-	use x86_64::structures::paging::{PageSize, Size4KiB as BasePageSize};
-
-	use crate::arch::x86_64::kernel::scheduler::TaskStacks;
-
-	info!("Create new file descriptor table");
-	core_scheduler().recreate_objmap().unwrap();
-
-	let entry_point: usize = LOADER_START | entry_point;
-	let stack_pointer: usize = LOADER_START
-		+ (code_size + LOADER_STACK_SIZE).align_up(BasePageSize::SIZE.try_into().unwrap())
-		- 8;
-
-	let stack_pointer =
-		stack_pointer - 128 /* red zone */ - arg.len() * core::mem::size_of::<*mut u8>();
-	let argv = unsafe { core::slice::from_raw_parts_mut(stack_pointer as *mut *mut u8, arg.len()) };
-	let len = arg.iter().fold(0, |acc, x| acc + x.len() + 1);
-	// align stack pointer to fulfill the requirements of the x86_64 ABI
-	let stack_pointer = (stack_pointer - len).align_down(16) - core::mem::size_of::<usize>();
-
-	let mut pos: usize = 0;
-	for (i, s) in arg.iter().enumerate() {
-		if let Ok(s) = CString::new(*s) {
-			let bytes = s.as_bytes_with_nul();
-			argv[i] = (stack_pointer + pos) as *mut u8;
-			pos += bytes.len();
-
-			unsafe {
-				core::ptr::copy_nonoverlapping(bytes.as_ptr(), argv[i], bytes.len());
-			}
-		} else {
-			panic!("Unable to create C string!");
-		}
-	}
-
-	debug!("Jump to user space at 0x{entry_point:x}, stack pointer 0x{stack_pointer:x}");
-
-	unsafe {
-		asm!(
-			"and rsp, {0}",
-			"swapgs",
-			"push {1}",
-			"push {2}",
-			"push {3}",
-			"push {4}",
-			"push {5}",
-			"mov rdi, {6}",
-			"mov rsi, {7}",
-			"iretq",
-			const u64::MAX - (TaskStacks::MARKER_SIZE as u64 - 1),
-			const 0x23usize,
-			in(reg) stack_pointer,
-			const 0x1202u64,
-			const 0x2busize,
-			in(reg) entry_point,
-			in(reg) argv.len(),
-			in(reg) argv.as_ptr(),
-			options(nostack, noreturn)
-		);
 	}
 }
