@@ -51,7 +51,6 @@ use arch::core_local::*;
 pub(crate) use crate::arch::*;
 pub use crate::config::DEFAULT_STACK_SIZE;
 pub(crate) use crate::config::*;
-pub use crate::fs::create_file;
 use crate::kernel::is_uhyve_with_pci;
 use crate::scheduler::{PerCoreScheduler, PerCoreSchedulerExt};
 
@@ -69,8 +68,6 @@ mod entropy;
 mod env;
 pub mod errno;
 mod executor;
-pub mod fd;
-pub mod fs;
 #[cfg_attr(not(any(feature = "pci", target_arch = "riscv64")), expect(dead_code))]
 mod init_cell;
 pub mod io;
@@ -132,7 +129,6 @@ extern "C" fn initd(_arg: usize) {
 	crate::executor::init();
 
 	syscalls::init();
-	fs::init();
 
 	// Get the application arguments and environment variables.
 	#[cfg(not(test))]

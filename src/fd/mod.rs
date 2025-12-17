@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use crate::arch::kernel::core_local::core_scheduler;
 use crate::errno::Errno;
 use crate::executor::block_on;
-use crate::fs::{FileAttr, SeekWhence};
 use crate::io;
 
 mod eventfd;

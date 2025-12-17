@@ -3,7 +3,6 @@
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::rc::Rc;
-use alloc::sync::Arc;
 #[cfg(feature = "smp")]
 use alloc::vec::Vec;
 use core::cell::RefCell;
@@ -12,24 +11,20 @@ use core::ptr;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
-use ahash::RandomState;
 use crossbeam_utils::Backoff;
-use hashbrown::{HashMap, hash_map};
 use hermit_sync::*;
 #[cfg(target_arch = "riscv64")]
 use riscv::register::sstatus;
 
+use crate::arch;
 use crate::arch::core_local::*;
 #[cfg(target_arch = "riscv64")]
 use crate::arch::switch::switch_to_task;
 #[cfg(target_arch = "x86_64")]
 use crate::arch::switch::{switch_to_fpu_owner, switch_to_task};
 use crate::arch::{get_processor_count, interrupts};
-use crate::errno::Errno;
-use crate::fd::{FileDescriptor, ObjectInterface};
 use crate::kernel::scheduler::TaskStacks;
 use crate::scheduler::task::*;
-use crate::{arch, io};
 
 pub mod task;
 
@@ -208,11 +203,6 @@ struct NewTask {
 	prio: Priority,
 	core_id: CoreId,
 	stacks: TaskStacks,
-	object_map: Arc<
-		RwSpinLock<
-			HashMap<FileDescriptor, Arc<async_lock::RwLock<dyn ObjectInterface>>, RandomState>,
-		>,
-	>,
 }
 
 impl From<NewTask> for Task {
@@ -224,9 +214,8 @@ impl From<NewTask> for Task {
 			prio,
 			core_id,
 			stacks,
-			object_map,
 		} = value;
-		let mut task = Self::new(tid, core_id, TaskStatus::Ready, prio, stacks, object_map);
+		let mut task = Self::new(tid, core_id, TaskStatus::Ready, prio, stacks);
 		task.create_stack_frame(func, arg);
 		task
 	}
@@ -251,7 +240,6 @@ impl PerCoreScheduler {
 			prio,
 			core_id,
 			stacks,
-			object_map: core_scheduler().get_current_task_object_map(),
 		};
 
 		// Add it to the task lists.
@@ -364,127 +352,6 @@ impl PerCoreScheduler {
 	#[inline]
 	pub fn get_current_task_id(&self) -> TaskId {
 		without_interrupts(|| self.current_task.borrow().id)
-	}
-
-	#[inline]
-	pub fn get_current_task_object_map(
-		&self,
-	) -> Arc<
-		RwSpinLock<
-			HashMap<FileDescriptor, Arc<async_lock::RwLock<dyn ObjectInterface>>, RandomState>,
-		>,
-	> {
-		without_interrupts(|| self.current_task.borrow().object_map.clone())
-	}
-
-	/// Map a file descriptor to their IO interface and returns
-	/// the shared reference
-	#[inline]
-	pub fn get_object(
-		&self,
-		fd: FileDescriptor,
-	) -> io::Result<Arc<async_lock::RwLock<dyn ObjectInterface>>> {
-		without_interrupts(|| {
-			let current_task = self.current_task.borrow();
-			let object_map = current_task.object_map.read();
-			object_map.get(&fd).cloned().ok_or(Errno::Badf)
-		})
-	}
-
-	/// Insert a new IO interface and returns a file descriptor as
-	/// identifier to this object
-	pub fn insert_object(
-		&self,
-		obj: Arc<async_lock::RwLock<dyn ObjectInterface>>,
-	) -> io::Result<FileDescriptor> {
-		without_interrupts(|| {
-			let current_task = self.current_task.borrow();
-			let mut object_map = current_task.object_map.write();
-
-			let new_fd = || -> io::Result<FileDescriptor> {
-				let mut fd: FileDescriptor = 0;
-				loop {
-					if !object_map.contains_key(&fd) {
-						break Ok(fd);
-					} else if fd == FileDescriptor::MAX {
-						break Err(Errno::Overflow);
-					}
-
-					fd = fd.saturating_add(1);
-				}
-			};
-
-			let fd = new_fd()?;
-			let _ = object_map.insert(fd, obj.clone());
-			Ok(fd)
-		})
-	}
-
-	/// Duplicate a IO interface and returns a new file descriptor as
-	/// identifier to the new copy
-	pub fn dup_object(&self, fd: FileDescriptor) -> io::Result<FileDescriptor> {
-		without_interrupts(|| {
-			let current_task = self.current_task.borrow();
-			let mut object_map = current_task.object_map.write();
-
-			let obj = (*(object_map.get(&fd).ok_or(Errno::Inval)?)).clone();
-
-			let new_fd = || -> io::Result<FileDescriptor> {
-				let mut fd: FileDescriptor = 0;
-				loop {
-					if !object_map.contains_key(&fd) {
-						break Ok(fd);
-					} else if fd == FileDescriptor::MAX {
-						break Err(Errno::Overflow);
-					}
-
-					fd = fd.saturating_add(1);
-				}
-			};
-
-			let fd = new_fd()?;
-			match object_map.entry(fd) {
-				hash_map::Entry::Occupied(_occupied_entry) => Err(Errno::Mfile),
-				hash_map::Entry::Vacant(vacant_entry) => {
-					vacant_entry.insert(obj);
-					Ok(fd)
-				}
-			}
-		})
-	}
-
-	pub fn dup_object2(
-		&self,
-		fd1: FileDescriptor,
-		fd2: FileDescriptor,
-	) -> io::Result<FileDescriptor> {
-		without_interrupts(|| {
-			let current_task = self.current_task.borrow();
-			let mut object_map = current_task.object_map.write();
-
-			let obj = object_map.get(&fd1).cloned().ok_or(Errno::Badf)?;
-
-			match object_map.entry(fd2) {
-				hash_map::Entry::Occupied(_occupied_entry) => Err(Errno::Mfile),
-				hash_map::Entry::Vacant(vacant_entry) => {
-					vacant_entry.insert(obj);
-					Ok(fd2)
-				}
-			}
-		})
-	}
-
-	/// Remove a IO interface, which is named by the file descriptor
-	pub fn remove_object(
-		&self,
-		fd: FileDescriptor,
-	) -> io::Result<Arc<async_lock::RwLock<dyn ObjectInterface>>> {
-		without_interrupts(|| {
-			let current_task = self.current_task.borrow();
-			let mut object_map = current_task.object_map.write();
-
-			object_map.remove(&fd).ok_or(Errno::Badf)
-		})
 	}
 
 	#[inline]

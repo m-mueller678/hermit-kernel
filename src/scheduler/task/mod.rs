@@ -4,24 +4,18 @@ pub(crate) mod tls;
 
 use alloc::collections::{LinkedList, VecDeque};
 use alloc::rc::Rc;
-use alloc::sync::Arc;
 use core::cell::RefCell;
 use core::num::NonZeroU64;
 use core::{cmp, fmt};
 
-use ahash::RandomState;
 use crossbeam_utils::CachePadded;
-use hashbrown::HashMap;
-use hermit_sync::{OnceCell, RwSpinLock};
 use memory_addresses::VirtAddr;
 
 use self::tls::Tls;
+use crate::arch;
 use crate::arch::core_local::*;
 use crate::arch::scheduler::TaskStacks;
-use crate::fd::stdio::*;
-use crate::fd::{FileDescriptor, ObjectInterface, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO};
 use crate::scheduler::CoreId;
-use crate::{arch, env};
 
 /// Returns the most significant bit.
 ///
@@ -386,12 +380,6 @@ pub(crate) struct Task {
 	pub core_id: CoreId,
 	/// Stack of the task
 	pub stacks: TaskStacks,
-	/// Mapping between file descriptor and the referenced IO interface
-	pub object_map: Arc<
-		RwSpinLock<
-			HashMap<FileDescriptor, Arc<async_lock::RwLock<dyn ObjectInterface>>, RandomState>,
-		>,
-	>,
 	/// Task Thread-Local-Storage (TLS)
 	pub tls: Option<Tls>,
 }
@@ -408,11 +396,6 @@ impl Task {
 		task_status: TaskStatus,
 		task_prio: Priority,
 		stacks: TaskStacks,
-		object_map: Arc<
-			RwSpinLock<
-				HashMap<FileDescriptor, Arc<async_lock::RwLock<dyn ObjectInterface>>, RandomState>,
-			>,
-		>,
 	) -> Task {
 		debug!("Creating new task {tid} on core {core_id}");
 
@@ -425,58 +408,12 @@ impl Task {
 			last_fpu_state: arch::processor::FPUState::new(),
 			core_id,
 			stacks,
-			object_map,
 			tls: None,
 		}
 	}
 
 	pub fn new_idle(tid: TaskId, core_id: CoreId) -> Task {
 		debug!("Creating idle task {tid}");
-
-		/// All cores use the same mapping between file descriptor and the referenced object
-		static OBJECT_MAP: OnceCell<
-			Arc<
-				RwSpinLock<
-					HashMap<
-						FileDescriptor,
-						Arc<async_lock::RwLock<dyn ObjectInterface>>,
-						RandomState,
-					>,
-				>,
-			>,
-		> = OnceCell::new();
-
-		if core_id == 0 {
-			OBJECT_MAP
-				.set(Arc::new(RwSpinLock::new(HashMap::<
-					FileDescriptor,
-					Arc<async_lock::RwLock<dyn ObjectInterface>>,
-					RandomState,
-				>::with_hasher(
-					RandomState::with_seeds(0, 0, 0, 0),
-				))))
-				// This function is called once per core and thus only once on core 0.
-				// Thus, this is the only place where we set OBJECT_MAP.
-				.unwrap_or_else(|_| unreachable!());
-			let objmap = OBJECT_MAP.get().unwrap().clone();
-			let mut guard = objmap.write();
-			if env::is_uhyve() {
-				let stdin = Arc::new(async_lock::RwLock::new(UhyveStdin::new()));
-				let stdout = Arc::new(async_lock::RwLock::new(UhyveStdout::new()));
-				let stderr = Arc::new(async_lock::RwLock::new(UhyveStderr::new()));
-				guard.insert(STDIN_FILENO, stdin);
-				guard.insert(STDOUT_FILENO, stdout);
-				guard.insert(STDERR_FILENO, stderr);
-			} else {
-				let stdin = Arc::new(async_lock::RwLock::new(GenericStdin::new()));
-				let stdout = Arc::new(async_lock::RwLock::new(GenericStdout::new()));
-				let stderr = Arc::new(async_lock::RwLock::new(GenericStderr::new()));
-				guard.insert(STDIN_FILENO, stdin);
-				guard.insert(STDOUT_FILENO, stdout);
-				guard.insert(STDERR_FILENO, stderr);
-			}
-		}
-
 		Task {
 			id: tid,
 			status: TaskStatus::Idle,
@@ -486,7 +423,6 @@ impl Task {
 			last_fpu_state: arch::processor::FPUState::new(),
 			core_id,
 			stacks: TaskStacks::from_boot_stacks(),
-			object_map: OBJECT_MAP.get().unwrap().clone(),
 			tls: None,
 		}
 	}
