@@ -27,7 +27,7 @@ impl Clippy {
 				.run()?;
 			clippy()
 				.arg("--no-default-features")
-				.arg("--features=acpi,fsgsbase,newlib,smp,vga")
+				.arg("--features=acpi,fsgsbase,smp,vga")
 				.run()?;
 		}
 

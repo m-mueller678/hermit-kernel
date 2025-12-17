@@ -71,6 +71,7 @@ pub mod errno;
 mod executor;
 pub mod fd;
 pub mod fs;
+#[cfg_attr(not(any(feature = "pci", target_arch = "riscv64")), expect(dead_code))]
 mod init_cell;
 pub mod io;
 pub mod mm;

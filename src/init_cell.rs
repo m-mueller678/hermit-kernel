@@ -21,11 +21,6 @@ impl<T> InitCell<T> {
 		f((*guard).as_mut());
 	}
 
-	#[allow(dead_code)]
-	pub fn get(&self) -> Option<&T> {
-		self.once.get()
-	}
-
 	pub fn finalize(&self) -> &T {
 		self.once.get_or_init(|| self.init.lock().take().unwrap())
 	}
