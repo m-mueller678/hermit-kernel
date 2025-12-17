@@ -151,13 +151,9 @@ pub fn boot_next_processor() {
 	// to initialize the next processor.
 	let cpu_online = CPU_ONLINE.fetch_add(1, Ordering::Release);
 
-	if !env::is_uhyve() {
-		if cpu_online == 0 {
-			#[cfg(target_os = "none")]
-			apic::boot_application_processors();
-		}
-
-		apic::print_information();
+	if !env::is_uhyve() && cpu_online == 0 {
+		#[cfg(target_os = "none")]
+		apic::boot_application_processors();
 	}
 }
 
