@@ -15,14 +15,14 @@ mod common;
 
 use alloc::vec;
 
-use hermit::syscalls::{sys_join, sys_spawn2, sys_usleep};
+use hermit::syscalls::{sys_join, sys_spawn2};
 
 const USER_STACK_SIZE: usize = 0x0010_0000;
 const NORMAL_PRIO: u8 = 2;
 
 extern "C" fn thread_func(i: usize) {
 	println!("this is thread number {}", i);
-	sys_usleep(2_000_000);
+	//sys_usleep(2_000_000);
 	println!("---------------THREAD DONE!---------- {}", i);
 }
 

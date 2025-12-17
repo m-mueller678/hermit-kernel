@@ -7,10 +7,7 @@ use hermit_sync::Lazy;
 
 pub use self::entropy::*;
 pub use self::processor::*;
-pub use self::spinlock::*;
-pub use self::system::*;
 pub use self::tasks::*;
-pub use self::timer::*;
 use crate::env;
 #[cfg(target_os = "none")]
 use crate::mm::ALLOCATOR;
@@ -19,10 +16,7 @@ use crate::syscalls::interfaces::SyscallInterface;
 mod entropy;
 pub(crate) mod interfaces;
 mod processor;
-mod spinlock;
-mod system;
 mod tasks;
-mod timer;
 
 pub(crate) static SYS: Lazy<&'static dyn SyscallInterface> = Lazy::new(|| {
 	if env::is_uhyve() {

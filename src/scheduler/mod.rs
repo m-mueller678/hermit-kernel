@@ -320,11 +320,6 @@ impl PerCoreScheduler {
 		without_interrupts(|| self.current_task.borrow().id)
 	}
 
-	#[inline]
-	pub fn get_current_task_prio(&self) -> Priority {
-		without_interrupts(|| self.current_task.borrow().prio)
-	}
-
 	/// Returns reference to prio_bitmap
 	#[allow(dead_code)]
 	#[inline]
@@ -346,34 +341,6 @@ impl PerCoreScheduler {
 			+ current_task_borrowed.stacks.get_interrupt_stack_size() as u64
 			- TaskStacks::MARKER_SIZE as u64;
 		tss.interrupt_stack_table[0] = ist_start.into();
-	}
-
-	pub fn set_current_task_priority(&mut self, prio: Priority) {
-		without_interrupts(|| {
-			trace!("Change priority of the current task");
-			self.current_task.borrow_mut().prio = prio;
-		});
-	}
-
-	pub fn set_priority(&mut self, id: TaskId, prio: Priority) -> Result<(), ()> {
-		trace!("Change priority of task {id} to priority {prio}");
-
-		without_interrupts(|| {
-			let task = get_task_handle(id).ok_or(())?;
-			let other_core = task.get_core_id() != self.core_id;
-
-			if other_core {
-				warn!("Have to change the priority on another core");
-			} else if self.current_task.borrow().id == task.get_id() {
-				self.current_task.borrow_mut().prio = prio;
-			} else {
-				self.ready_queue
-					.set_priority(task, prio)
-					.expect("Do not find valid task in ready queue");
-			}
-
-			Ok(())
-		})
 	}
 
 	#[cfg(target_arch = "riscv64")]
@@ -685,8 +652,4 @@ pub fn join(id: TaskId) -> Result<(), ()> {
 
 pub fn shutdown(arg: i32) -> ! {
 	crate::syscalls::shutdown(arg)
-}
-
-fn get_task_handle(id: TaskId) -> Option<TaskHandle> {
-	TASKS.lock().get(&id).copied()
 }

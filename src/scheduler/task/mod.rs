@@ -94,6 +94,7 @@ pub const NO_PRIORITIES: usize = 31;
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct TaskHandle {
 	id: TaskId,
+	#[allow(dead_code)]
 	priority: Priority,
 	core_id: CoreId,
 }
@@ -113,10 +114,6 @@ impl TaskHandle {
 
 	pub fn get_id(&self) -> TaskId {
 		self.id
-	}
-
-	pub fn get_priority(&self) -> Priority {
-		self.priority
 	}
 }
 
@@ -175,30 +172,6 @@ impl PriorityTaskQueue {
 		task
 	}
 
-	/// Remove the task at index from the queue and return that task,
-	/// or None if the index is out of range or the list is empty.
-	fn remove_from_queue(
-		&mut self,
-		task_index: usize,
-		queue_index: usize,
-	) -> Option<Rc<RefCell<Task>>> {
-		//assert!(prio < NO_PRIORITIES, "Priority {} is too high", prio);
-
-		let queue = &mut self.queues[queue_index];
-		if task_index <= queue.len() {
-			// Calling remove is unstable: https://github.com/rust-lang/rust/issues/69210
-			let mut split_list = queue.split_off(task_index);
-			let element = split_list.pop_front();
-			queue.append(&mut split_list);
-			if queue.is_empty() {
-				self.prio_bitmap &= !(1 << queue_index as u64);
-			}
-			element
-		} else {
-			None
-		}
-	}
-
 	/// Returns true if the queue is empty.
 	pub fn is_empty(&self) -> bool {
 		self.prio_bitmap == 0
@@ -239,24 +212,6 @@ impl PriorityTaskQueue {
 		} else {
 			IDLE_PRIO
 		}
-	}
-
-	/// Change priority of specific task
-	pub fn set_priority(&mut self, handle: TaskHandle, prio: Priority) -> Result<(), ()> {
-		let old_priority = handle.get_priority().into() as usize;
-		if let Some(index) = self.queues[old_priority]
-			.iter()
-			.position(|current_task| current_task.borrow().id == handle.id)
-		{
-			let Some(task) = self.remove_from_queue(index, old_priority) else {
-				return Err(());
-			};
-			task.borrow_mut().prio = prio;
-			self.push(task);
-			return Ok(());
-		}
-
-		Err(())
 	}
 }
 
