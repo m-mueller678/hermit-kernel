@@ -11,34 +11,12 @@ use crate::scheduler::task::{Priority, TaskHandle, TaskId};
 use crate::time::timespec;
 use crate::{arch, scheduler};
 
-#[cfg(feature = "newlib")]
-pub type SignalHandler = extern "C" fn(i32);
 pub type Tid = i32;
 
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_getpid() -> Tid {
 	0
-}
-
-#[cfg(feature = "newlib")]
-#[hermit_macro::system(errno)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sys_getprio(id: *const Tid) -> i32 {
-	let task = core_scheduler().get_current_task_handle();
-
-	if id.is_null() || unsafe { *id } == task.get_id().into() {
-		i32::from(task.get_priority().into())
-	} else {
-		-i32::from(Errno::Inval)
-	}
-}
-
-#[cfg(feature = "newlib")]
-#[hermit_macro::system(errno)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sys_setprio(_id: *const Tid, _prio: i32) -> i32 {
-	-i32::from(Errno::Nosys)
 }
 
 fn exit(arg: i32) -> ! {
@@ -116,42 +94,10 @@ pub unsafe extern "C" fn sys_nanosleep(rqtp: *const timespec, _rmtp: *mut timesp
 	0
 }
 
-/// Creates a new thread based on the configuration of the current thread.
-#[cfg(feature = "newlib")]
-#[hermit_macro::system(errno)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sys_clone(id: *mut Tid, func: extern "C" fn(usize), arg: usize) -> i32 {
-	let task_id = core_scheduler().clone(func, arg);
-
-	if !id.is_null() {
-		unsafe {
-			*id = task_id.into();
-		}
-	}
-
-	0
-}
-
 #[hermit_macro::system(errno)]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_yield() {
 	core_scheduler().reschedule();
-}
-
-#[cfg(feature = "newlib")]
-#[hermit_macro::system(errno)]
-#[unsafe(no_mangle)]
-pub extern "C" fn sys_kill(dest: Tid, signum: i32) -> i32 {
-	debug!("sys_kill is unimplemented, returning -ENOSYS for killing {dest} with signal {signum}");
-	-i32::from(Errno::Nosys)
-}
-
-#[cfg(feature = "newlib")]
-#[hermit_macro::system(errno)]
-#[unsafe(no_mangle)]
-pub extern "C" fn sys_signal(_handler: SignalHandler) -> i32 {
-	debug!("sys_signal is unimplemented");
-	0
 }
 
 #[hermit_macro::system]

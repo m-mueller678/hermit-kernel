@@ -14,8 +14,6 @@ pub use self::condvar::*;
 pub use self::entropy::*;
 pub use self::futex::*;
 pub use self::processor::*;
-#[cfg(feature = "newlib")]
-pub use self::recmutex::*;
 pub use self::semaphore::*;
 pub use self::spinlock::*;
 pub use self::system::*;
@@ -38,8 +36,6 @@ mod entropy;
 mod futex;
 pub(crate) mod interfaces;
 mod processor;
-#[cfg(feature = "newlib")]
-mod recmutex;
 mod semaphore;
 mod spinlock;
 mod system;

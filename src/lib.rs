@@ -120,13 +120,6 @@ fn trivial_test() {
 /// Entry point of a kernel thread, which initialize the libos
 #[cfg(target_os = "none")]
 extern "C" fn initd(_arg: usize) {
-	unsafe extern "C" {
-		#[cfg(all(not(test), not(feature = "nostd")))]
-		fn runtime_entry(argc: i32, argv: *const *const u8, env: *const *const u8) -> !;
-		#[cfg(all(not(test), feature = "nostd"))]
-		fn main(argc: i32, argv: *const *const u8, env: *const *const u8);
-	}
-
 	if env::is_uhyve() {
 		info!("Hermit is running on uhyve!");
 	} else {
@@ -156,11 +149,10 @@ extern "C" fn initd(_arg: usize) {
 
 	#[cfg(not(test))]
 	unsafe {
-		// And finally start the application.
-		#[cfg(all(not(test), not(feature = "nostd")))]
+		unsafe extern "C" {
+			fn runtime_entry(argc: i32, argv: *const *const u8, env: *const *const u8) -> !;
+		}
 		runtime_entry(argc, argv, environ);
-		#[cfg(all(not(test), feature = "nostd"))]
-		main(argc, argv, environ);
 	}
 	#[cfg(test)]
 	test_main();

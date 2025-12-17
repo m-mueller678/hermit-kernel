@@ -677,43 +677,6 @@ impl From<Infallible> for Errno {
 	}
 }
 
-/// Returns the pointer to `errno`.
-#[cfg(all(not(any(feature = "nostd")), not(target_arch = "riscv64"),))]
-#[unsafe(no_mangle)]
-#[linkage = "weak"]
-pub extern "C" fn sys_errno_location() -> *mut i32 {
-	use core::cell::UnsafeCell;
-
-	#[thread_local]
-	static ERRNO: UnsafeCell<i32> = UnsafeCell::new(0);
-
-	ERRNO.get()
-}
-
-/// Get the error number from the thread local storage
-///
-/// Soft-deprecated in favor of using `sys_errno_location`.
-#[cfg(not(feature = "nostd"))]
-#[unsafe(no_mangle)]
-pub extern "C" fn sys_get_errno() -> i32 {
-	sys_errno()
-}
-
-/// Get the error number from the thread local storage
-///
-/// Soft-deprecated in favor of using `sys_errno_location`.
-#[cfg(not(feature = "nostd"))]
-#[unsafe(no_mangle)]
-pub extern "C" fn sys_errno() -> i32 {
-	cfg_if::cfg_if! {
-		if #[cfg(any(target_arch = "riscv64"))] {
-			0
-		} else {
-			unsafe { *sys_errno_location() }
-		}
-	}
-}
-
 pub(crate) trait ToErrno {
 	fn to_errno(&self) -> Option<i32> {
 		None
@@ -723,17 +686,8 @@ pub(crate) trait ToErrno {
 	where
 		Self: Sized,
 	{
-		if let Some(errno) = self.to_errno() {
-			cfg_if::cfg_if! {
-				if #[cfg(any(feature = "nostd", target_arch = "riscv64"))] {
-					let _ = errno;
-				} else {
-					unsafe {
-						*sys_errno_location() = errno;
-					}
-				}
-			}
-		}
+		// this used to set errno for libc
+		let _ = self.to_errno();
 		self
 	}
 }

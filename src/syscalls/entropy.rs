@@ -1,5 +1,3 @@
-#[cfg(not(feature = "newlib"))]
-use core::mem::size_of;
 use core::slice;
 
 use hermit_sync::TicketMutex;
@@ -54,50 +52,6 @@ unsafe fn read_entropy(buf: *mut u8, len: usize, flags: u32) -> isize {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sys_read_entropy(buf: *mut u8, len: usize, flags: u32) -> isize {
 	unsafe { read_entropy(buf, len, flags) }
-}
-
-/// Create a cryptographicly secure 32bit random number with the support of
-/// the underlying hardware. If the required hardware isn't available,
-/// the function returns `-1`.
-#[cfg(not(feature = "newlib"))]
-#[hermit_macro::system]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sys_secure_rand32(value: *mut u32) -> i32 {
-	let mut buf = value.cast();
-	let mut len = size_of::<u32>();
-	while len != 0 {
-		let res = unsafe { read_entropy(buf, len, 0) };
-		if res < 0 {
-			return -1;
-		}
-
-		buf = unsafe { buf.add(res as usize) };
-		len -= res as usize;
-	}
-
-	0
-}
-
-/// Create a cryptographicly secure 64bit random number with the support of
-/// the underlying hardware. If the required hardware isn't available,
-/// the function returns -1.
-#[cfg(not(feature = "newlib"))]
-#[hermit_macro::system]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sys_secure_rand64(value: *mut u64) -> i32 {
-	let mut buf = value.cast();
-	let mut len = size_of::<u64>();
-	while len != 0 {
-		let res = unsafe { read_entropy(buf, len, 0) };
-		if res < 0 {
-			return -1;
-		}
-
-		buf = unsafe { buf.add(res as usize) };
-		len -= res as usize;
-	}
-
-	0
 }
 
 /// The function computes a sequence of pseudo-random integers
