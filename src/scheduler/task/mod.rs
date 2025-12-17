@@ -2,13 +2,12 @@
 
 pub(crate) mod tls;
 
-use alloc::collections::{LinkedList, VecDeque};
+use alloc::collections::LinkedList;
 use alloc::rc::Rc;
 use core::cell::RefCell;
 use core::num::NonZeroU64;
 use core::{cmp, fmt};
 
-use crossbeam_utils::CachePadded;
 use memory_addresses::VirtAddr;
 
 use self::tls::Tls;
@@ -140,99 +139,6 @@ impl PartialEq for TaskHandle {
 }
 
 impl Eq for TaskHandle {}
-
-/// Realize a priority queue for task handles
-#[derive(Default)]
-pub(crate) struct TaskHandlePriorityQueue {
-	queues: [Option<VecDeque<TaskHandle>>; NO_PRIORITIES],
-	prio_bitmap: CachePadded<u64>,
-}
-
-impl TaskHandlePriorityQueue {
-	/// Creates an empty priority queue for tasks
-	pub const fn new() -> Self {
-		Self {
-			queues: [const { None }; NO_PRIORITIES],
-			prio_bitmap: CachePadded::new(0),
-		}
-	}
-
-	/// Checks if the queue is empty.
-	pub fn is_empty(&self) -> bool {
-		self.prio_bitmap.into_inner() == 0
-	}
-
-	/// Checks if the given task is in the queue. Returns `true` if the task
-	/// was found.
-	pub fn contains(&self, task: TaskHandle) -> bool {
-		matches!(self.queues[task.priority.into() as usize]
-			.as_ref(), Some(queue) if queue.iter().any(|queued| queued.id == task.id))
-	}
-
-	/// Add a task handle by its priority to the queue
-	pub fn push(&mut self, task: TaskHandle) {
-		let i = task.priority.into() as usize;
-		//assert!(i < NO_PRIORITIES, "Priority {} is too high", i);
-
-		*self.prio_bitmap |= (1 << i) as u64;
-		if let Some(queue) = &mut self.queues[i] {
-			queue.push_back(task);
-		} else {
-			let mut queue = VecDeque::new();
-			queue.push_back(task);
-			self.queues[i] = Some(queue);
-		}
-	}
-
-	fn pop_from_queue(&mut self, queue_index: usize) -> Option<TaskHandle> {
-		if let Some(queue) = &mut self.queues[queue_index] {
-			let task = queue.pop_front();
-
-			if queue.is_empty() {
-				*self.prio_bitmap &= !(1 << queue_index as u64);
-			}
-
-			task
-		} else {
-			None
-		}
-	}
-
-	/// Pop the task handle with the highest priority from the queue
-	pub fn pop(&mut self) -> Option<TaskHandle> {
-		if let Some(i) = msb(self.prio_bitmap.into_inner()) {
-			return self.pop_from_queue(i as usize);
-		}
-
-		None
-	}
-
-	/// Remove a specific task handle from the priority queue. Returns `true` if
-	/// the handle was in the queue.
-	pub fn remove(&mut self, task: TaskHandle) -> bool {
-		let queue_index = task.priority.into() as usize;
-		//assert!(queue_index < NO_PRIORITIES, "Priority {} is too high", queue_index);
-
-		let mut success = false;
-		if let Some(queue) = &mut self.queues[queue_index] {
-			let mut i = 0;
-			while i != queue.len() {
-				if queue[i].id == task.id {
-					queue.remove(i);
-					success = true;
-				} else {
-					i += 1;
-				}
-			}
-
-			if queue.is_empty() {
-				*self.prio_bitmap &= !(1 << queue_index as u64);
-			}
-		}
-
-		success
-	}
-}
 
 /// Realize a priority queue for tasks
 pub(crate) struct PriorityTaskQueue {

@@ -5,11 +5,8 @@ use core::alloc::{GlobalAlloc, Layout};
 
 use hermit_sync::Lazy;
 
-pub use self::condvar::*;
 pub use self::entropy::*;
-pub use self::futex::*;
 pub use self::processor::*;
-pub use self::semaphore::*;
 pub use self::spinlock::*;
 pub use self::system::*;
 pub use self::tasks::*;
@@ -19,12 +16,9 @@ use crate::env;
 use crate::mm::ALLOCATOR;
 use crate::syscalls::interfaces::SyscallInterface;
 
-mod condvar;
 mod entropy;
-mod futex;
 pub(crate) mod interfaces;
 mod processor;
-mod semaphore;
 mod spinlock;
 mod system;
 mod tasks;
