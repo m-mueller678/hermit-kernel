@@ -23,11 +23,11 @@ impl Clippy {
 			clippy().arg("--all-features").run()?;
 			clippy()
 				.arg("--no-default-features")
-				.arg("--features=acpi,fsgsbase,pci,smp,vga")
+				.arg("--features=acpi,fsgsbase,pci,vga")
 				.run()?;
 			clippy()
 				.arg("--no-default-features")
-				.arg("--features=acpi,fsgsbase,smp,vga")
+				.arg("--features=acpi,fsgsbase,vga")
 				.run()?;
 		}
 

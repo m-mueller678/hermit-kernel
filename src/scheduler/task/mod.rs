@@ -96,21 +96,18 @@ pub const NO_PRIORITIES: usize = 31;
 pub(crate) struct TaskHandle {
 	id: TaskId,
 	priority: Priority,
-	#[cfg(feature = "smp")]
 	core_id: CoreId,
 }
 
 impl TaskHandle {
-	pub fn new(id: TaskId, priority: Priority, #[cfg(feature = "smp")] core_id: CoreId) -> Self {
+	pub fn new(id: TaskId, priority: Priority, core_id: CoreId) -> Self {
 		Self {
 			id,
 			priority,
-			#[cfg(feature = "smp")]
 			core_id,
 		}
 	}
 
-	#[cfg(feature = "smp")]
 	pub fn get_core_id(&self) -> CoreId {
 		self.core_id
 	}
@@ -329,7 +326,7 @@ impl PriorityTaskQueue {
 	}
 
 	/// Returns the highest priority of all available task
-	#[cfg(all(any(target_arch = "x86_64", target_arch = "riscv64"), feature = "smp"))]
+	#[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
 	pub fn get_highest_priority(&self) -> Priority {
 		if let Some(i) = msb(self.prio_bitmap) {
 			Priority::from(i.try_into().unwrap())

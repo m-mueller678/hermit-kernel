@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use core::arch::{asm, naked_asm};
-#[cfg(feature = "smp")]
 use core::sync::atomic::AtomicPtr;
 
 use aarch64_cpu::asm::barrier::{SY, dsb};
@@ -106,17 +105,14 @@ pub unsafe extern "C" fn _start(boot_info: Option<&'static RawBootInfo>, cpu_id:
 	)
 }
 
-#[cfg(feature = "smp")]
 const fn tcr_size(x: u64) -> u64 {
 	((64 - x) << 16) | (64 - x)
 }
 
-#[cfg(feature = "smp")]
 const fn mair(attr: u64, mt: u64) -> u64 {
 	attr << (mt * 8)
 }
 
-#[cfg(feature = "smp")]
 pub(crate) static TTBR0: AtomicPtr<u8> = AtomicPtr::new(core::ptr::null_mut());
 
 // Prepare system control register (SCTRL)
@@ -142,27 +138,26 @@ pub(crate) static TTBR0: AtomicPtr<u8> = AtomicPtr::new(core::ptr::null_mut());
 // C       [2]  Data and unified enabled
 // A       [1]  Alignment fault checking disabled
 // M       [0]  MMU enable
-#[cfg(all(feature = "smp", target_endian = "little"))]
+#[cfg(target_endian = "little")]
 static SCTLR_EL1: u64 = 0b100_0000_0101_1101_0000_0001_1101;
 // The same, but EE and EOE are set to 1 for big endian.
-#[cfg(all(feature = "smp", target_endian = "big"))]
+#[cfg(target_endian = "big")]
 static SCTLR_EL1: u64 = 0b111_0000_0101_1101_0000_0001_1101;
 
-#[cfg(all(feature = "smp", target_endian = "little"))]
+#[cfg(target_endian = "little")]
 macro_rules! configure_endianness {
 	() => {
 		"bic x2, x2, #(1 << 24 | 1 << 25)"
 	};
 }
 
-#[cfg(all(feature = "smp", target_endian = "big"))]
+#[cfg(target_endian = "big")]
 macro_rules! configure_endianness {
 	() => {
 		"orr x2, x2, #(1 << 24 | 1 << 25)"
 	};
 }
 
-#[cfg(feature = "smp")]
 #[unsafe(naked)]
 pub(crate) unsafe extern "C" fn smp_start() -> ! {
 	naked_asm!(
@@ -278,18 +273,6 @@ unsafe extern "C" fn pre_init(boot_info: Option<&'static RawBootInfo>, cpu_id: u
 		env::set_boot_info(*boot_info.unwrap());
 		crate::boot_processor_main()
 	} else {
-		#[cfg(not(feature = "smp"))]
-		{
-			let style = anstyle::Style::new().fg_color(Some(anstyle::AnsiColor::Red.into()));
-			let preamble = format_args!("[            ][{cpu_id}][{style}ERROR{style:#}]");
-			println!(
-				"{preamble} Secondary core booted, but Hermit was not built with SMP support!"
-			);
-			loop {
-				crate::arch::processor::halt();
-			}
-		}
-		#[cfg(feature = "smp")]
 		crate::application_processor_main()
 	}
 }

@@ -166,7 +166,6 @@ pub fn map<S>(
 	let unmapped = unsafe { map_pages(&mut identity_mapped_page_table(), pages, frames, flags) };
 
 	if unmapped {
-		#[cfg(feature = "smp")]
 		crate::arch::x86_64::kernel::apic::ipi_tlb_flush();
 	}
 }

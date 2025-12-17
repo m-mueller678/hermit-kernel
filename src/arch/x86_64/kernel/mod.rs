@@ -43,7 +43,6 @@ pub fn get_image_size() -> usize {
 	(range.end - range.start) as usize
 }
 
-#[cfg(feature = "smp")]
 pub fn get_possible_cpus() -> u32 {
 	use core::cmp;
 
@@ -57,14 +56,8 @@ pub fn get_possible_cpus() -> u32 {
 	}
 }
 
-#[cfg(feature = "smp")]
 pub fn get_processor_count() -> u32 {
 	CPU_ONLINE.load(Ordering::Acquire)
-}
-
-#[cfg(not(feature = "smp"))]
-pub fn get_processor_count() -> u32 {
-	1
 }
 
 pub fn is_uhyve_with_pci() -> bool {
@@ -124,7 +117,7 @@ pub fn boot_processor_init() {
 }
 
 /// Application Processor initialization
-#[cfg(all(target_os = "none", feature = "smp"))]
+#[cfg(target_os = "none")]
 pub fn application_processor_init() {
 	CoreLocal::install();
 	processor::configure();
@@ -160,13 +153,11 @@ pub fn boot_next_processor() {
 
 	if !env::is_uhyve() {
 		if cpu_online == 0 {
-			#[cfg(all(target_os = "none", feature = "smp"))]
+			#[cfg(target_os = "none")]
 			apic::boot_application_processors();
 		}
 
-		if !cfg!(feature = "smp") {
-			apic::print_information();
-		}
+		apic::print_information();
 	}
 }
 
@@ -197,18 +188,6 @@ unsafe extern "C" fn pre_init(boot_info: Option<&'static RawBootInfo>, cpu_id: u
 
 		crate::boot_processor_main()
 	} else {
-		#[cfg(not(feature = "smp"))]
-		{
-			let style = anstyle::Style::new().fg_color(Some(anstyle::AnsiColor::Red.into()));
-			let preamble = format_args!("[            ][{cpu_id}][{style}ERROR{style:#}]");
-			println!(
-				"{preamble} Secondary core booted, but Hermit was not built with SMP support!"
-			);
-			loop {
-				processor::halt();
-			}
-		}
-		#[cfg(feature = "smp")]
 		crate::application_processor_main();
 	}
 }

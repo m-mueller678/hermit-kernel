@@ -607,12 +607,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuse-abi"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19976a6994b6ebda45b4d02a46dc5a9b2af17d46a43d9f76404c333f0b38f7d7"
-
-[[package]]
 name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -771,7 +765,6 @@ dependencies = [
  "fdt",
  "float-cmp",
  "free-list",
- "fuse-abi",
  "hashbrown",
  "heapless",
  "hermit-entry",
@@ -791,7 +784,6 @@ dependencies = [
  "sbi-rt",
  "semihosting",
  "shell-words",
- "simple-shell",
  "smallvec",
  "take-static",
  "talc",
@@ -1685,12 +1677,6 @@ name = "simd-adler32"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
-
-[[package]]
-name = "simple-shell"
-version = "0.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e977035c0f40249ba591c6b8c03b8b5393779817b8db5f29753acf6c012d234a"
 
 [[package]]
 name = "siphasher"

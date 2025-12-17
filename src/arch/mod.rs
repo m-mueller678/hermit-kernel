@@ -16,7 +16,6 @@ cfg_if::cfg_if! {
 		pub(crate) use self::aarch64::kernel::serial::SerialDevice;
 		pub(crate) use self::aarch64::kernel::processor::set_oneshot_timer;
 		pub(crate) use self::aarch64::kernel::scheduler;
-		#[cfg(feature = "smp")]
 		pub(crate) use self::aarch64::kernel::application_processor_init;
 		pub(crate) use self::aarch64::kernel::{
 			get_processor_count,
@@ -30,7 +29,7 @@ cfg_if::cfg_if! {
 			set_oneshot_timer,
 			wakeup_core,
 		};
-		#[cfg(all(target_os = "none", feature = "smp"))]
+		#[cfg(target_os = "none")]
 		pub(crate) use self::x86_64::kernel::application_processor_init;
 		pub(crate) use self::x86_64::kernel::core_local;
 		pub(crate) use self::x86_64::kernel::gdt::set_current_kernel_stack;
@@ -51,7 +50,6 @@ cfg_if::cfg_if! {
 		pub(crate) mod riscv64;
 		pub(crate) use self::riscv64::*;
 
-		#[cfg(feature = "smp")]
 		pub(crate) use self::riscv64::kernel::application_processor_init;
 		#[cfg(feature = "pci")]
 		pub(crate) use self::riscv64::kernel::pci;

@@ -364,7 +364,6 @@ pub fn timer_handler() {
 	core_scheduler().scheduler();
 }
 
-#[cfg(feature = "smp")]
 pub fn wakeup_handler() {
 	debug!("Received Wakeup Interrupt");
 	//increment_irq_counter(WAKEUP_INTERRUPT_NUMBER.into());

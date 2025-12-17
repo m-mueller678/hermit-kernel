@@ -78,7 +78,6 @@ pub(crate) fn enable_and_wait() {
 			let pending_interrupts = sip::read();
 
 			// trace!("sip: {:x?}", pending_interrupts);
-			#[cfg(feature = "smp")]
 			if pending_interrupts.ssoft() {
 				//Clear Supervisor-level software interrupt
 				core::arch::asm!(
@@ -165,7 +164,6 @@ pub extern "C" fn trap_handler(tf: &mut TrapFrame) {
 
 	match cause {
 		Trap::Interrupt(Interrupt::SupervisorExternal) => external_handler(),
-		#[cfg(feature = "smp")]
 		Trap::Interrupt(Interrupt::SupervisorSoft) => {
 			crate::arch::riscv64::kernel::scheduler::wakeup_handler();
 		}

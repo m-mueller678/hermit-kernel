@@ -41,9 +41,7 @@ extern crate log;
 #[macro_use]
 extern crate std;
 
-#[cfg(feature = "smp")]
 use core::hint::spin_loop;
-#[cfg(feature = "smp")]
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use arch::core_local::*;
@@ -155,7 +153,6 @@ extern "C" fn initd(_arg: usize) {
 	test_main();
 }
 
-#[cfg(feature = "smp")]
 fn synch_all_cores() {
 	static CORE_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -215,7 +212,6 @@ fn boot_processor_main() -> ! {
 
 	arch::kernel::boot_next_processor();
 
-	#[cfg(feature = "smp")]
 	synch_all_cores();
 
 	#[cfg(feature = "pci")]
@@ -224,8 +220,6 @@ fn boot_processor_main() -> ! {
 	info!("Compiled with ACPI support");
 	#[cfg(all(feature = "fsgsbase", target_arch = "x86_64"))]
 	info!("Compiled with FSGSBASE support");
-	#[cfg(feature = "smp")]
-	info!("Compiled with SMP support");
 
 	if is_uhyve_with_pci() || !env::is_uhyve() {
 		#[cfg(feature = "pci")]
@@ -248,7 +242,7 @@ fn boot_processor_main() -> ! {
 }
 
 /// Entry Point of Hermit for an Application Processor
-#[cfg(all(target_os = "none", feature = "smp"))]
+#[cfg(target_os = "none")]
 fn application_processor_main() -> ! {
 	arch::application_processor_init();
 	#[cfg(not(target_arch = "riscv64"))]

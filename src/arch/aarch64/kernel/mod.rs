@@ -57,21 +57,14 @@ pub fn get_limit() -> usize {
 	env::boot_info().hardware_info.phys_addr_range.end as usize
 }
 
-#[cfg(feature = "smp")]
 pub fn get_possible_cpus() -> u32 {
 	let fdt = env::fdt().unwrap();
 	let cpu_count = fdt.cpus().count();
 	u32::try_from(cpu_count).unwrap()
 }
 
-#[cfg(feature = "smp")]
 pub fn get_processor_count() -> u32 {
 	CPU_ONLINE.0.load(Ordering::Acquire)
-}
-
-#[cfg(not(feature = "smp"))]
-pub fn get_processor_count() -> u32 {
-	1
 }
 
 pub fn args() -> Option<&'static str> {
@@ -124,7 +117,7 @@ pub fn boot_next_processor() {
 	#[allow(unused_variables)]
 	let cpu_online = CPU_ONLINE.0.fetch_add(1, Ordering::Release);
 
-	#[cfg(all(target_os = "none", feature = "smp"))]
+	#[cfg(target_os = "none")]
 	if !env::is_uhyve() && get_possible_cpus() > 1 {
 		use core::arch::asm;
 		use core::hint::spin_loop;

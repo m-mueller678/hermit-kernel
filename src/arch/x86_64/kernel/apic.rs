@@ -1,7 +1,6 @@
 use alloc::alloc::alloc;
 use alloc::vec::Vec;
 use core::alloc::Layout;
-#[cfg(feature = "smp")]
 use core::arch::x86_64::_mm_mfence;
 #[cfg(feature = "acpi")]
 use core::fmt;
@@ -10,13 +9,11 @@ use core::sync::atomic::Ordering;
 use core::{cmp, mem, ptr};
 
 use align_address::Align;
-#[cfg(feature = "smp")]
 use arch::x86_64::kernel::core_local::*;
 use arch::x86_64::kernel::{interrupts, processor};
 use free_list::PageLayout;
 use hermit_sync::{OnceCell, SpinMutex, without_interrupts};
 use memory_addresses::{AddrRange, PhysAddr, VirtAddr};
-#[cfg(feature = "smp")]
 use x86_64::registers::control::Cr3;
 use x86_64::registers::model_specific::Msr;
 
@@ -88,16 +85,11 @@ const APIC_ICR2: usize = 0x0310;
 
 const APIC_DIV_CONF_DIVIDE_BY_8: u64 = 0b0010;
 const APIC_EOI_ACK: u64 = 0;
-#[cfg(feature = "smp")]
 const APIC_ICR_DELIVERY_MODE_FIXED: u64 = 0x000;
-#[cfg(feature = "smp")]
 const APIC_ICR_DELIVERY_MODE_INIT: u64 = 0x500;
-#[cfg(feature = "smp")]
 const APIC_ICR_DELIVERY_MODE_STARTUP: u64 = 0x600;
 const APIC_ICR_DELIVERY_STATUS_PENDING: u32 = 1 << 12;
-#[cfg(feature = "smp")]
 const APIC_ICR_LEVEL_TRIGGERED: u64 = 1 << 15;
-#[cfg(feature = "smp")]
 const APIC_ICR_LEVEL_ASSERT: u64 = 1 << 14;
 const APIC_LVT_MASK: u64 = 1 << 16;
 const APIC_LVT_TIMER_TSC_DEADLINE: u64 = 1 << 18;
@@ -111,9 +103,7 @@ const IOAPIC_REG_VER: u32 = 0x0001;
 /// Redirection table base
 const IOAPIC_REG_TABLE: u32 = 0x0010;
 
-#[cfg(feature = "smp")]
 const TLB_FLUSH_INTERRUPT_NUMBER: u8 = 112;
-#[cfg(feature = "smp")]
 const WAKEUP_INTERRUPT_NUMBER: u8 = 121;
 pub const TIMER_INTERRUPT_NUMBER: u8 = 123;
 const ERROR_INTERRUPT_NUMBER: u8 = 126;
@@ -124,14 +114,10 @@ const SPURIOUS_INTERRUPT_NUMBER: u8 = 127;
 /// While our boot processor is already in x86-64 mode, application processors boot up in 16-bit real mode
 /// and need an address in the CS:IP addressing scheme to jump to.
 /// The CS:IP addressing scheme is limited to 2^20 bytes (= 1 MiB).
-#[cfg(feature = "smp")]
 const SMP_BOOT_CODE_ADDRESS: VirtAddr = VirtAddr::new(0x8000);
 
-#[cfg(feature = "smp")]
 const SMP_BOOT_CODE_OFFSET_ENTRY: u64 = 0x08;
-#[cfg(feature = "smp")]
 const SMP_BOOT_CODE_OFFSET_CPU_ID: u64 = SMP_BOOT_CODE_OFFSET_ENTRY + 0x08;
-#[cfg(feature = "smp")]
 const SMP_BOOT_CODE_OFFSET_PML4: u64 = SMP_BOOT_CODE_OFFSET_CPU_ID + 0x04;
 
 const X2APIC_ENABLE: u64 = 1 << 10;
@@ -255,7 +241,6 @@ impl fmt::Display for IoApicRecord {
 	}
 }
 
-#[cfg(feature = "smp")]
 extern "x86-interrupt" fn tlb_flush_handler(_stack_frame: interrupts::ExceptionStackFrame) {
 	debug!("Received TLB Flush Interrupt");
 	increment_irq_counter(TLB_FLUSH_INTERRUPT_NUMBER);
@@ -279,7 +264,6 @@ extern "x86-interrupt" fn spurious_interrupt_handler(stack_frame: interrupts::Ex
 	scheduler::abort();
 }
 
-#[cfg(feature = "smp")]
 extern "x86-interrupt" fn wakeup_handler(_stack_frame: interrupts::ExceptionStackFrame) {
 	use crate::scheduler::PerCoreSchedulerExt;
 
@@ -298,7 +282,6 @@ pub fn add_local_apic_id(id: u8) {
 	CPU_LOCAL_APIC_IDS.lock().push(id);
 }
 
-#[cfg(feature = "smp")]
 pub fn local_apic_id_count() -> u32 {
 	CPU_LOCAL_APIC_IDS.lock().len() as u32
 }
@@ -555,7 +538,6 @@ pub fn init() {
 		idt[SPURIOUS_INTERRUPT_NUMBER]
 			.set_handler_fn(spurious_interrupt_handler)
 			.set_stack_index(0);
-		#[cfg(feature = "smp")]
 		{
 			idt[TLB_FLUSH_INTERRUPT_NUMBER]
 				.set_handler_fn(tlb_flush_handler)
@@ -739,7 +721,7 @@ pub fn init_next_processor_variables() {
 /// This algorithm is derived from Intel MultiProcessor Specification 1.4, B.4, but testing has shown
 /// that a second STARTUP IPI and setting the BIOS Reset Vector are no longer necessary.
 /// This is partly confirmed by <https://wiki.osdev.org/Symmetric_Multiprocessing>
-#[cfg(all(target_os = "none", feature = "smp"))]
+#[cfg(target_os = "none")]
 pub fn boot_application_processors() {
 	use core::hint;
 
@@ -854,7 +836,6 @@ pub fn boot_application_processors() {
 	print_information();
 }
 
-#[cfg(feature = "smp")]
 pub fn ipi_tlb_flush() {
 	if arch::get_processor_count() > 1 {
 		let apic_ids = CPU_LOCAL_APIC_IDS.lock();
@@ -886,7 +867,7 @@ pub fn ipi_tlb_flush() {
 /// Send an inter-processor interrupt to wake up a CPU Core that is in a HALT state.
 #[allow(unused_variables)]
 pub fn wakeup_core(core_id_to_wakeup: CoreId) {
-	#[cfg(all(feature = "smp", not(feature = "idle-poll")))]
+	#[cfg(not(feature = "idle-poll"))]
 	if core_id_to_wakeup != core_id()
 		&& !crate::processor::supports_mwait()
 		&& crate::scheduler::take_core_hlt_state(core_id_to_wakeup)

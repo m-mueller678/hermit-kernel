@@ -34,7 +34,7 @@ name = "measure_startup_time"
 harness = false
 
 [features]
-default = ["kernel-stack", "pci", "pci-ids", "acpi", "fsgsbase", "smp"]
+default = ["kernel-stack", "pci", "pci-ids", "acpi", "fsgsbase"]
 acpi = []
 alloc-stats = ["talc/counters"]
 fsgsbase = []
@@ -42,7 +42,6 @@ idle-poll = []
 kernel-stack = []
 pci = []
 semihosting = ["dep:semihosting"]
-smp = []
 strace = []
 trace = []
 vga = []
@@ -95,7 +94,6 @@ endian-num = { version = "0.2", optional = true, features = ["linux-types"] }
 enum_dispatch = "0.3"
 fdt = { version = "0.1", features = ["pretty-printing"] }
 free-list = "0.3"
-fuse-abi = { version = "0.2", features = ["linux"], optional = true }
 hashbrown = { version = "0.16", default-features = false }
 heapless = "0.9"
 hermit-entry = { version = "0.10.6", features = ["kernel"] }
@@ -107,7 +105,6 @@ pci-ids = { version = "0.2", optional = true }
 pci_types = { version = "0.10" }
 rand_chacha = { version = "0.9", default-features = false }
 shell-words = { version = "1.1", default-features = false }
-simple-shell = { version = "0.0.1", optional = true }
 smallvec = { version = "1", features = ["const_new"] }
 take-static = "0.1"
 talc = { version = "4" }

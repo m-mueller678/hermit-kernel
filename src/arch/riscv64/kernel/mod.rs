@@ -56,19 +56,12 @@ pub fn get_limit() -> usize {
 		- env::boot_info().hardware_info.phys_addr_range.start) as usize
 }
 
-#[cfg(feature = "smp")]
 pub fn get_possible_cpus() -> u32 {
 	NUM_CPUS.load(Ordering::Relaxed)
 }
 
-#[cfg(feature = "smp")]
 pub fn get_processor_count() -> u32 {
 	CPU_ONLINE.load(Ordering::Relaxed)
-}
-
-#[cfg(not(feature = "smp"))]
-pub fn get_processor_count() -> u32 {
-	1
 }
 
 pub fn get_base_address() -> VirtAddr {
@@ -113,7 +106,6 @@ pub fn boot_processor_init() {
 }
 
 /// Application Processor initialization
-#[cfg(feature = "smp")]
 pub fn application_processor_init() {
 	unsafe {
 		super::mm::paging::enable_page_table();

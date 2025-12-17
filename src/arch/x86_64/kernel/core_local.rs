@@ -1,24 +1,18 @@
 use alloc::boxed::Box;
 use core::arch::asm;
 use core::cell::Cell;
-#[cfg(feature = "smp")]
-use core::sync::atomic::AtomicBool;
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::{mem, ptr};
 
 use async_executor::StaticExecutor;
-#[cfg(feature = "smp")]
-use hermit_sync::InterruptTicketMutex;
-use hermit_sync::{RawRwSpinLock, RawSpinMutex};
+use hermit_sync::{InterruptTicketMutex, RawRwSpinLock, RawSpinMutex};
 use x86_64::VirtAddr;
 use x86_64::registers::model_specific::GsBase;
 use x86_64::structures::tss::TaskStateSegment;
 
 use super::CPU_ONLINE;
 use super::interrupts::{IRQ_COUNTERS, IrqStatistics};
-#[cfg(feature = "smp")]
-use crate::scheduler::SchedulerInput;
-use crate::scheduler::{CoreId, PerCoreScheduler};
+use crate::scheduler::{CoreId, PerCoreScheduler, SchedulerInput};
 
 pub(crate) struct CoreLocal {
 	this: *const Self,
@@ -34,10 +28,8 @@ pub(crate) struct CoreLocal {
 	irq_statistics: &'static IrqStatistics,
 	/// The core-local async executor.
 	ex: StaticExecutor<RawSpinMutex, RawRwSpinLock>,
-	#[cfg(feature = "smp")]
 	pub hlt: AtomicBool,
 	/// Queues to handle incoming requests from the other cores
-	#[cfg(feature = "smp")]
 	pub scheduler_input: InterruptTicketMutex<SchedulerInput>,
 }
 
@@ -62,9 +54,7 @@ impl CoreLocal {
 			kernel_stack: Cell::new(ptr::null_mut()),
 			irq_statistics,
 			ex: StaticExecutor::new(),
-			#[cfg(feature = "smp")]
 			hlt: AtomicBool::new(false),
-			#[cfg(feature = "smp")]
 			scheduler_input: InterruptTicketMutex::new(SchedulerInput::new()),
 		};
 		let this = if core_id == 0 {

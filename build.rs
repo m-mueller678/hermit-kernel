@@ -10,9 +10,7 @@ use llvm_tools::LlvmTools;
 fn main() -> Result<()> {
 	built::write_built_file().unwrap();
 
-	if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "x86_64"
-		&& env::var_os("CARGO_FEATURE_SMP").is_some()
-	{
+	if env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "x86_64" {
 		assemble_x86_64_smp_boot()?;
 	}
 

@@ -6,8 +6,6 @@ use hermit_entry::boot_info::RawBootInfo;
 
 use super::{CPU_ONLINE, CURRENT_BOOT_ID, HART_MASK, NUM_CPUS};
 use crate::arch::riscv64::kernel::CURRENT_STACK_ADDRESS;
-#[cfg(not(feature = "smp"))]
-use crate::arch::riscv64::kernel::processor;
 use crate::{KERNEL_STACK_SIZE, env};
 
 //static mut BOOT_STACK: [u8; KERNEL_STACK_SIZE] = [0; KERNEL_STACK_SIZE];
@@ -67,18 +65,6 @@ unsafe extern "C" fn pre_init(hart_id: usize, boot_info: Option<&'static RawBoot
 		HART_MASK.store(hart_mask, Ordering::Relaxed);
 		crate::boot_processor_main()
 	} else {
-		#[cfg(not(feature = "smp"))]
-		{
-			let style = anstyle::Style::new().fg_color(Some(anstyle::AnsiColor::Red.into()));
-			let preamble = format_args!("[            ][{hart_id}][{style}ERROR{style:#}]");
-			println!(
-				"{preamble} Secondary core booted, but Hermit was not built with SMP support!"
-			);
-			loop {
-				processor::halt();
-			}
-		}
-		#[cfg(feature = "smp")]
 		crate::application_processor_main();
 	}
 }

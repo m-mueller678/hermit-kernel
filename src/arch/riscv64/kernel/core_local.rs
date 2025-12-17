@@ -5,14 +5,10 @@ use core::ptr;
 use core::sync::atomic::Ordering;
 
 use async_executor::StaticExecutor;
-#[cfg(feature = "smp")]
-use hermit_sync::InterruptTicketMutex;
-use hermit_sync::{RawRwSpinLock, RawSpinMutex};
+use hermit_sync::{InterruptTicketMutex, RawRwSpinLock, RawSpinMutex};
 
 use crate::arch::riscv64::kernel::CPU_ONLINE;
-#[cfg(feature = "smp")]
-use crate::scheduler::SchedulerInput;
-use crate::scheduler::{CoreId, PerCoreScheduler};
+use crate::scheduler::{CoreId, PerCoreScheduler, SchedulerInput};
 
 pub struct CoreLocal {
 	/// ID of the current Core.
@@ -24,7 +20,6 @@ pub struct CoreLocal {
 	/// The core-local async executor.
 	ex: StaticExecutor<RawSpinMutex, RawRwSpinLock>,
 	/// Queues to handle incoming requests from the other cores
-	#[cfg(feature = "smp")]
 	pub scheduler_input: InterruptTicketMutex<SchedulerInput>,
 }
 
@@ -42,7 +37,6 @@ impl CoreLocal {
 				scheduler: Cell::new(ptr::null_mut()),
 				kernel_stack: Cell::new(0),
 				ex: StaticExecutor::new(),
-				#[cfg(feature = "smp")]
 				scheduler_input: InterruptTicketMutex::new(SchedulerInput::new()),
 			};
 			let this = if core_id == 0 {
