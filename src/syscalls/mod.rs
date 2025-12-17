@@ -43,8 +43,6 @@ mod processor;
 #[cfg(feature = "newlib")]
 mod recmutex;
 mod semaphore;
-#[cfg(feature = "vsock")]
-pub mod socket;
 mod spinlock;
 mod system;
 mod tasks;

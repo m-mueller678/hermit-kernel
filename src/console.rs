@@ -7,8 +7,6 @@ use heapless::Vec;
 use hermit_sync::{InterruptTicketMutex, Lazy};
 
 use crate::arch::SerialDevice;
-#[cfg(feature = "console")]
-use crate::drivers::console::VirtioUART;
 use crate::errno::Errno;
 use crate::executor::WakerRegistration;
 #[cfg(not(target_arch = "riscv64"))]
@@ -20,8 +18,6 @@ pub(crate) enum IoDevice {
 	#[cfg(not(target_arch = "riscv64"))]
 	Uhyve(UhyveSerial),
 	Uart(SerialDevice),
-	#[cfg(feature = "console")]
-	Virtio(VirtioUART),
 }
 
 impl ErrorType for IoDevice {
@@ -34,8 +30,6 @@ impl Read for IoDevice {
 			#[cfg(not(target_arch = "riscv64"))]
 			IoDevice::Uhyve(s) => s.read(buf),
 			IoDevice::Uart(s) => s.read(buf),
-			#[cfg(feature = "console")]
-			IoDevice::Virtio(s) => s.read(buf),
 		}
 	}
 }
@@ -46,8 +40,6 @@ impl ReadReady for IoDevice {
 			#[cfg(not(target_arch = "riscv64"))]
 			IoDevice::Uhyve(s) => s.read_ready(),
 			IoDevice::Uart(s) => s.read_ready(),
-			#[cfg(feature = "console")]
-			IoDevice::Virtio(s) => s.read_ready(),
 		}
 	}
 }
@@ -58,8 +50,6 @@ impl Write for IoDevice {
 			#[cfg(not(target_arch = "riscv64"))]
 			IoDevice::Uhyve(s) => s.write_all(buf)?,
 			IoDevice::Uart(s) => s.write_all(buf)?,
-			#[cfg(feature = "console")]
-			IoDevice::Virtio(s) => s.write_all(buf)?,
 		};
 
 		#[cfg(all(target_arch = "x86_64", feature = "vga"))]
@@ -130,11 +120,6 @@ impl Console {
 			device,
 			buffer: Vec::new(),
 		}
-	}
-
-	#[cfg(feature = "console")]
-	pub fn replace_device(&mut self, device: IoDevice) {
-		self.device = device;
 	}
 }
 

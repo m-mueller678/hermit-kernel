@@ -6,8 +6,6 @@ use core::fmt;
 
 use ahash::RandomState;
 use hashbrown::HashMap;
-#[cfg(any(feature = "fuse", feature = "vsock", feature = "console"))]
-use hermit_sync::InterruptTicketMutex;
 use hermit_sync::without_interrupts;
 use memory_addresses::{PhysAddr, VirtAddr};
 use pci_types::capability::CapabilityIterator;
@@ -17,18 +15,6 @@ use pci_types::{
 };
 
 use crate::arch::pci::PciConfigRegion;
-#[cfg(feature = "console")]
-use crate::console::IoDevice;
-#[cfg(feature = "console")]
-use crate::drivers::console::{VirtioConsoleDriver, VirtioUART};
-#[cfg(feature = "fuse")]
-use crate::drivers::fs::virtio_fs::VirtioFsDriver;
-#[cfg(any(feature = "fuse", feature = "vsock", feature = "console",))]
-use crate::drivers::virtio::transport::pci as pci_virtio;
-#[cfg(any(feature = "fuse", feature = "vsock", feature = "console",))]
-use crate::drivers::virtio::transport::pci::VirtioDriver;
-#[cfg(feature = "vsock")]
-use crate::drivers::vsock::VirtioVsockDriver;
 #[allow(unused_imports)]
 use crate::drivers::{Driver, InterruptHandlerQueue};
 use crate::init_cell::InitCell;
@@ -322,77 +308,12 @@ pub(crate) fn print_information() {
 #[allow(clippy::large_enum_variant)]
 #[allow(clippy::enum_variant_names)]
 #[non_exhaustive]
-pub(crate) enum PciDriver {
-	#[cfg(feature = "fuse")]
-	VirtioFs(InterruptTicketMutex<VirtioFsDriver>),
-	#[cfg(feature = "console")]
-	VirtioConsole(InterruptTicketMutex<VirtioConsoleDriver>),
-	#[cfg(feature = "vsock")]
-	VirtioVsock(InterruptTicketMutex<VirtioVsockDriver>),
-}
+pub(crate) enum PciDriver {}
 
 impl PciDriver {
-	#[cfg(feature = "console")]
-	fn get_console_driver(&self) -> Option<&InterruptTicketMutex<VirtioConsoleDriver>> {
-		#[allow(unreachable_patterns)]
-		match self {
-			Self::VirtioConsole(drv) => Some(drv),
-			_ => None,
-		}
-	}
-
-	#[cfg(feature = "vsock")]
-	fn get_vsock_driver(&self) -> Option<&InterruptTicketMutex<VirtioVsockDriver>> {
-		#[allow(unreachable_patterns)]
-		match self {
-			Self::VirtioVsock(drv) => Some(drv),
-			_ => None,
-		}
-	}
-
-	#[cfg(feature = "fuse")]
-	fn get_filesystem_driver(&self) -> Option<&InterruptTicketMutex<VirtioFsDriver>> {
-		match self {
-			Self::VirtioFs(drv) => Some(drv),
-			#[allow(unreachable_patterns)]
-			_ => None,
-		}
-	}
-
 	fn get_interrupt_handler(&self) -> (InterruptLine, fn()) {
-		#[allow(unreachable_patterns)]
+		#[allow(clippy::match_single_binding)]
 		match self {
-			#[cfg(feature = "vsock")]
-			Self::VirtioVsock(drv) => {
-				fn vsock_handler() {
-					if let Some(driver) = get_vsock_driver() {
-						driver.lock().handle_interrupt();
-					}
-				}
-
-				let irq_number = drv.lock().get_interrupt_number();
-
-				(irq_number, vsock_handler)
-			}
-			#[cfg(feature = "fuse")]
-			Self::VirtioFs(drv) => {
-				fn fuse_handler() {}
-
-				let irq_number = drv.lock().get_interrupt_number();
-
-				(irq_number, fuse_handler)
-			}
-			#[cfg(feature = "console")]
-			Self::VirtioConsole(drv) => {
-				fn console_handler() {
-					if let Some(driver) = get_console_driver() {
-						driver.lock().handle_interrupt();
-					}
-				}
-
-				let irq_number = drv.lock().get_interrupt_number();
-				(irq_number, console_handler)
-			}
 			_ => todo!(),
 		}
 	}
@@ -436,30 +357,6 @@ pub(crate) fn get_interrupt_handlers() -> HashMap<InterruptLine, InterruptHandle
 	handlers
 }
 
-#[cfg(feature = "console")]
-pub(crate) fn get_console_driver() -> Option<&'static InterruptTicketMutex<VirtioConsoleDriver>> {
-	PCI_DRIVERS
-		.get()?
-		.iter()
-		.find_map(|drv| drv.get_console_driver())
-}
-
-#[cfg(feature = "vsock")]
-pub(crate) fn get_vsock_driver() -> Option<&'static InterruptTicketMutex<VirtioVsockDriver>> {
-	PCI_DRIVERS
-		.get()?
-		.iter()
-		.find_map(|drv| drv.get_vsock_driver())
-}
-
-#[cfg(feature = "fuse")]
-pub(crate) fn get_filesystem_driver() -> Option<&'static InterruptTicketMutex<VirtioFsDriver>> {
-	PCI_DRIVERS
-		.get()?
-		.iter()
-		.find_map(|drv| drv.get_filesystem_driver())
-}
-
 pub(crate) fn init() {
 	// virtio: 4.1.2 PCI Device Discovery
 	without_interrupts(|| {
@@ -471,27 +368,6 @@ pub(crate) fn init() {
 				"Found virtio device with device id {:#x}",
 				adapter.device_id()
 			);
-
-			#[cfg(any(feature = "fuse", feature = "vsock", feature = "console",))]
-			match pci_virtio::init_device(adapter) {
-				#[cfg(feature = "console")]
-				Ok(VirtioDriver::Console(drv)) => {
-					register_driver(PciDriver::VirtioConsole(InterruptTicketMutex::new(*drv)));
-					info!("Switch to virtio console");
-					crate::console::CONSOLE
-						.lock()
-						.replace_device(IoDevice::Virtio(VirtioUART::new()));
-				}
-				#[cfg(feature = "vsock")]
-				Ok(VirtioDriver::Vsock(drv)) => {
-					register_driver(PciDriver::VirtioVsock(InterruptTicketMutex::new(*drv)));
-				}
-				#[cfg(feature = "fuse")]
-				Ok(VirtioDriver::FileSystem(drv)) => {
-					register_driver(PciDriver::VirtioFs(InterruptTicketMutex::new(drv)));
-				}
-				_ => {}
-			}
 		}
 	});
 }

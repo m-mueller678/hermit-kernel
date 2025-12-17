@@ -1,5 +1,3 @@
-#[cfg(all(feature = "fuse", feature = "pci"))]
-pub(crate) mod fuse;
 mod mem;
 mod uhyve;
 
@@ -364,8 +362,6 @@ pub(crate) fn init() {
 	*cwd = Some("/tmp".to_owned());
 	drop(cwd);
 
-	#[cfg(all(feature = "fuse", feature = "pci"))]
-	fuse::init();
 	if crate::env::is_uhyve() {
 		uhyve::init();
 	}

@@ -34,27 +34,22 @@ name = "measure_startup_time"
 harness = false
 
 [features]
-default = ["kernel-stack", "pci", "pci-ids", "acpi", "fsgsbase", "smp", "fuse",  "vsock"]
+default = ["kernel-stack", "pci", "pci-ids", "acpi", "fsgsbase", "smp"]
 acpi = []
 alloc-stats = ["talc/counters"]
-console = ["virtio"]
-fs = ["fuse"]
 fsgsbase = []
-fuse = ["virtio", "pci", "dep:fuse-abi", "fuse-abi/num_enum"]
 idle-poll = []
 kernel-stack = []
 mman = []
 mmap = ["mman"] # Deprecated in favor of mman
 newlib = []
 nostd = []
-pci = ["virtio?/pci"]
+pci = []
 semihosting = ["dep:semihosting"]
 smp = []
 strace = []
 trace = []
 vga = []
-virtio = ["dep:virtio"]
-vsock = ["virtio", "pci"]
 warn-prebuilt = []
 
 [lints.rust]
@@ -88,7 +83,6 @@ unreadable_literal = "warn"
 
 [dependencies]
 hermit-macro = { version = "=0.1.0", path = "hermit-macro" }
-virtio = { package = "virtio-spec", version = "0.3", optional = true, features = ["alloc", "mmio", "nightly", "zerocopy"] }
 ahash = { version = "0.8", default-features = false }
 align-address = "0.3"
 anstyle = { version = "1", default-features = false }

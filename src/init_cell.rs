@@ -1,8 +1,3 @@
-#![cfg_attr(
-	not(any(feature = "vsock", feature = "fuse", feature = "console")),
-	expect(dead_code)
-)]
-
 use hermit_sync::{OnceCell, SpinMutex};
 
 /// A cell for iteratively initializing a `OnceCell`.
@@ -26,6 +21,7 @@ impl<T> InitCell<T> {
 		f((*guard).as_mut());
 	}
 
+	#[allow(dead_code)]
 	pub fn get(&self) -> Option<&T> {
 		self.once.get()
 	}

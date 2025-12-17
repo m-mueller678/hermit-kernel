@@ -1,8 +1,6 @@
 #[cfg(feature = "alloc-stats")]
 mod alloc_stats;
 pub(crate) mod task;
-#[cfg(feature = "vsock")]
-pub(crate) mod vsock;
 
 use alloc::sync::Arc;
 use alloc::task::Wake;
@@ -101,10 +99,7 @@ pub(crate) fn run() {
 }
 
 /// Spawns a future on the executor.
-#[cfg_attr(
-	not(any(feature = "alloc-stats", feature = "vsock")),
-	expect(dead_code)
-)]
+#[cfg_attr(not(any(feature = "alloc-stats")), expect(dead_code))]
 pub(crate) fn spawn<F>(future: F)
 where
 	F: Future<Output = ()> + Send + 'static,
@@ -113,8 +108,6 @@ where
 }
 
 pub fn init() {
-	#[cfg(feature = "vsock")]
-	crate::executor::vsock::init();
 	#[cfg(feature = "alloc-stats")]
 	crate::executor::alloc_stats::init();
 }

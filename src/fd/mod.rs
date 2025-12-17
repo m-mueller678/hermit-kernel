@@ -14,27 +14,11 @@ use crate::fs::{FileAttr, SeekWhence};
 use crate::io;
 
 mod eventfd;
-#[cfg(feature = "vsock")]
-pub(crate) mod socket;
 pub(crate) mod stdio;
 
 pub(crate) const STDIN_FILENO: FileDescriptor = 0;
 pub(crate) const STDOUT_FILENO: FileDescriptor = 1;
 pub(crate) const STDERR_FILENO: FileDescriptor = 2;
-
-#[cfg(feature = "vsock")]
-#[derive(Debug)]
-pub(crate) enum Endpoint {
-	#[cfg(feature = "vsock")]
-	Vsock(socket::vsock::VsockEndpoint),
-}
-
-#[cfg(feature = "vsock")]
-#[derive(Debug)]
-pub(crate) enum ListenEndpoint {
-	#[cfg(feature = "vsock")]
-	Vsock(socket::vsock::VsockListenEndpoint),
-}
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
@@ -223,54 +207,6 @@ pub(crate) trait ObjectInterface: Sync + Send {
 	/// On success, the number of bytes read is returned.  On end of directory, 0 is returned.  On error, -1 is returned
 	async fn getdents(&self, _buf: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
 		Err(Errno::Inval)
-	}
-
-	/// `accept` a connection on a socket
-	#[cfg(feature = "vsock")]
-	async fn accept(&mut self) -> io::Result<Endpoint> {
-		Err(Errno::Inval)
-	}
-
-	/// initiate a connection on a socket
-	#[cfg(feature = "vsock")]
-	async fn connect(&mut self, _endpoint: Endpoint) -> io::Result<()> {
-		Err(Errno::Inval)
-	}
-
-	/// `bind` a name to a socket
-	#[cfg(feature = "vsock")]
-	async fn bind(&mut self, _name: ListenEndpoint) -> io::Result<()> {
-		Err(Errno::Inval)
-	}
-
-	/// `listen` for connections on a socket
-	#[cfg(feature = "vsock")]
-	async fn listen(&mut self, _backlog: i32) -> io::Result<()> {
-		Err(Errno::Inval)
-	}
-
-	/// `setsockopt` sets options on sockets
-	#[cfg(feature = "vsock")]
-	async fn setsockopt(&self, _opt: SocketOption, _optval: bool) -> io::Result<()> {
-		Err(Errno::Notsock)
-	}
-
-	/// `getsockopt` gets options on sockets
-	#[cfg(feature = "vsock")]
-	async fn getsockopt(&self, _opt: SocketOption) -> io::Result<bool> {
-		Err(Errno::Notsock)
-	}
-
-	/// `getsockname` gets socket name
-	#[cfg(feature = "vsock")]
-	async fn getsockname(&self) -> io::Result<Option<Endpoint>> {
-		Ok(None)
-	}
-
-	/// shut down part of a full-duplex connection
-	#[cfg(feature = "vsock")]
-	async fn shutdown(&self, _how: i32) -> io::Result<()> {
-		Err(Errno::Nosys)
 	}
 
 	/// Returns the file status flags.
