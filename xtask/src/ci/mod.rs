@@ -7,7 +7,6 @@ mod c;
 mod firecracker;
 mod qemu;
 mod rs;
-mod uhyve;
 
 /// Run CI tasks.
 #[derive(Subcommand)]

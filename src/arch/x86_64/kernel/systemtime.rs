@@ -1,12 +1,10 @@
 use core::hint::spin_loop;
 
-use hermit_entry::boot_info::PlatformInfo;
 use hermit_sync::{OnceCell, without_interrupts};
 use time::OffsetDateTime;
 use x86_64::instructions::port::Port;
 
 use crate::arch::x86_64::kernel::processor;
-use crate::env;
 
 const CMOS_COMMAND: Port<u8> = Port::new(0x70);
 const CMOS_DATA: Port<u8> = Port::new(0x71);
@@ -176,15 +174,12 @@ impl Rtc {
 static BOOT_TIME: OnceCell<u64> = OnceCell::new();
 
 pub fn init() {
-	let boot_time = match env::boot_info().platform_info {
-		PlatformInfo::Uhyve { boot_time, .. } => boot_time,
-		_ => {
-			// Get the current time in microseconds since the epoch (1970-01-01) from the x86 RTC.
-			// Subtract the timer ticks to get the actual time when Hermit was booted.
-			let current_time = without_interrupts(|| Rtc::new().get_microseconds_since_epoch());
-			let boot_time = current_time - processor::get_timer_ticks();
-			OffsetDateTime::from_unix_timestamp_nanos(i128::from(boot_time) * 1000).unwrap()
-		}
+	let boot_time = {
+		// Get the current time in microseconds since the epoch (1970-01-01) from the x86 RTC.
+		// Subtract the timer ticks to get the actual time when Hermit was booted.
+		let current_time = without_interrupts(|| Rtc::new().get_microseconds_since_epoch());
+		let boot_time = current_time - processor::get_timer_ticks();
+		OffsetDateTime::from_unix_timestamp_nanos(i128::from(boot_time) * 1000).unwrap()
 	};
 	info!("Hermit booted on {boot_time}");
 

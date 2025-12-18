@@ -47,49 +47,37 @@ fn rtc_read(off: usize) -> u32 {
 }
 
 pub fn init() {
-	match env::boot_info().platform_info {
-		PlatformInfo::Uhyve { boot_time, .. } => {
-			PL031_ADDRESS.set(VirtAddr::zero()).unwrap();
-			BOOT_TIME.set(u64::try_from(boot_time.unix_timestamp_nanos() / 1000).unwrap());
-			info!("Hermit booted on {boot_time}");
+	let fdt = env::fdt().unwrap();
+	if let Some(pl031_node) = fdt.find_compatible(&["arm,pl031"]) {
+		let reg = pl031_node.reg().unwrap().next().unwrap();
+		let addr = PhysAddr::from(reg.starting_address.addr());
+		let size = u64::try_from(reg.size.unwrap()).unwrap();
 
-			return;
-		}
-		_ => {
-			let fdt = env::fdt().unwrap();
-			if let Some(pl031_node) = fdt.find_compatible(&["arm,pl031"]) {
-				let reg = pl031_node.reg().unwrap().next().unwrap();
-				let addr = PhysAddr::from(reg.starting_address.addr());
-				let size = u64::try_from(reg.size.unwrap()).unwrap();
+		debug!("Found RTC at {addr:p} (size {size:#X})");
 
-				debug!("Found RTC at {addr:p} (size {size:#X})");
+		let layout = PageLayout::from_size(size.try_into().unwrap()).unwrap();
+		let page_range = PageAlloc::allocate(layout).unwrap();
+		let pl031_address = VirtAddr::from(page_range.start());
+		PL031_ADDRESS.set(pl031_address).unwrap();
+		debug!("Mapping RTC to virtual address {pl031_address:p}");
 
-				let layout = PageLayout::from_size(size.try_into().unwrap()).unwrap();
-				let page_range = PageAlloc::allocate(layout).unwrap();
-				let pl031_address = VirtAddr::from(page_range.start());
-				PL031_ADDRESS.set(pl031_address).unwrap();
-				debug!("Mapping RTC to virtual address {pl031_address:p}");
+		let mut flags = PageTableEntryFlags::empty();
+		flags.device().writable().execute_disable();
+		paging::map::<BasePageSize>(
+			pl031_address,
+			addr,
+			(size / BasePageSize::SIZE).try_into().unwrap(),
+			flags,
+		);
 
-				let mut flags = PageTableEntryFlags::empty();
-				flags.device().writable().execute_disable();
-				paging::map::<BasePageSize>(
-					pl031_address,
-					addr,
-					(size / BasePageSize::SIZE).try_into().unwrap(),
-					flags,
-				);
+		let boot_time = OffsetDateTime::from_unix_timestamp(rtc_read(RTC_DR).into()).unwrap();
+		info!("Hermit booted on {boot_time}");
 
-				let boot_time =
-					OffsetDateTime::from_unix_timestamp(rtc_read(RTC_DR).into()).unwrap();
-				info!("Hermit booted on {boot_time}");
+		BOOT_TIME
+			.set(u64::try_from(boot_time.unix_timestamp_nanos() / 1000).unwrap())
+			.unwrap();
 
-				BOOT_TIME
-					.set(u64::try_from(boot_time.unix_timestamp_nanos() / 1000).unwrap())
-					.unwrap();
-
-				return;
-			}
-		}
+		return;
 	};
 
 	BOOT_TIME.set(0).unwrap();

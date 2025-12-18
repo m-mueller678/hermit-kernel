@@ -108,7 +108,7 @@ fn finish_processor_init() {
 }
 
 pub fn boot_next_processor() {
-	// This triggers to wake up the next processor (bare-metal/QEMU) or uhyve
+	// This triggers to wake up the next processor (bare-metal/QEMU)
 	// to initialize the next processor.
 	#[allow(unused_variables)]
 	let cpu_online = CPU_ONLINE.0.fetch_add(1, Ordering::Release);

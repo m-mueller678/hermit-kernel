@@ -44,16 +44,7 @@ pub fn get_image_size() -> usize {
 }
 
 pub fn get_possible_cpus() -> u32 {
-	use core::cmp;
-
-	match env::boot_info().platform_info {
-		// FIXME: Remove get_processor_count after a transition period for uhyve 0.1.3 adoption
-		PlatformInfo::Uhyve { num_cpus, .. } => cmp::max(
-			u32::try_from(num_cpus.get()).unwrap(),
-			get_processor_count(),
-		),
-		_ => apic::local_apic_id_count(),
-	}
+	apic::local_apic_id_count()
 }
 
 pub fn get_processor_count() -> u32 {
@@ -119,11 +110,8 @@ pub fn application_processor_init() {
 	debug!("Cr4 = {:?}", Cr4::read());
 }
 
-#[deprecated]
-fn finish_processor_init() {}
-
 pub fn boot_next_processor() {
-	// This triggers apic::boot_application_processors (bare-metal/QEMU) or uhyve
+	// This triggers apic::boot_application_processors (bare-metal/QEMU)
 	// to initialize the next processor.
 	let cpu_online = CPU_ONLINE.fetch_add(1, Ordering::Release);
 

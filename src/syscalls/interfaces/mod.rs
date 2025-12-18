@@ -2,9 +2,6 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::{arch, env};
-
-pub(crate) mod uhyve;
-
 // The generic interface simply uses all default implementations of the
 // SyscallInterface trait.
 pub struct Generic;

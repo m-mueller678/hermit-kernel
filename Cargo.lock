@@ -3,32 +3,12 @@
 version = 4
 
 [[package]]
-name = "aarch64"
-version = "0.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dfa8287e400aa9af0c4e0c93967882634f7972b94b74fd5110507b486a1ced4"
-dependencies = [
- "aarch64-cpu 9.4.0",
- "memory_addresses",
- "tock-registers 0.8.1",
-]
-
-[[package]]
-name = "aarch64-cpu"
-version = "9.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac42a04a61c19fc8196dd728022a784baecc5d63d7e256c01ad1b3fbfab26287"
-dependencies = [
- "tock-registers 0.8.1",
-]
-
-[[package]]
 name = "aarch64-cpu"
 version = "11.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44171e22925ec72b63d86747bc3655c7849a5b8d865c980222128839f45ac034"
 dependencies = [
- "tock-registers 0.10.1",
+ "tock-registers",
 ]
 
 [[package]]
@@ -641,7 +621,7 @@ dependencies = [
 name = "hermit-kernel"
 version = "0.12.0"
 dependencies = [
- "aarch64-cpu 11.2.0",
+ "aarch64-cpu",
  "ahash",
  "align-address",
  "anstyle",
@@ -684,10 +664,9 @@ dependencies = [
  "talc",
  "thiserror",
  "time",
- "tock-registers 0.10.1",
+ "tock-registers",
  "trapframe",
  "uart_16550",
- "uhyve-interface",
  "volatile 0.6.1",
  "x86_64",
  "zerocopy",
@@ -1715,12 +1694,6 @@ dependencies = [
 
 [[package]]
 name = "tock-registers"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "696941a0aee7e276a165a978b37918fd5d22c55c3d6bda197813070ca9c0f21c"
-
-[[package]]
-name = "tock-registers"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d2d250f87fb3fb6f225c907cf54381509f47b40b74b1d1f12d2dccbc915bdfe"
@@ -1749,18 +1722,6 @@ dependencies = [
  "bitflags 2.10.0",
  "rustversion",
  "x86",
-]
-
-[[package]]
-name = "uhyve-interface"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7390116b0481b52dbc7d979f858dcc426494714a3ba03e9534d26c8ea41b899e"
-dependencies = [
- "aarch64",
- "memory_addresses",
- "num_enum",
- "x86_64",
 ]
 
 [[package]]

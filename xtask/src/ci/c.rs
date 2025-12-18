@@ -35,7 +35,6 @@ pub enum Action {
 	Build,
 	Firecracker(super::firecracker::Firecracker),
 	Qemu(super::qemu::Qemu),
-	Uhyve(super::uhyve::Uhyve),
 }
 
 impl C {
@@ -46,7 +45,6 @@ impl C {
 			Action::Build => Ok(()),
 			Action::Firecracker(firecracker) => firecracker.run(&image, self.smp),
 			Action::Qemu(qemu) => qemu.run(&image, self.smp, self.arch, false),
-			Action::Uhyve(uhyve) => uhyve.run(&image, self.smp),
 		}
 	}
 
