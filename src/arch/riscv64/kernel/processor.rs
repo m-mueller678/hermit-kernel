@@ -219,11 +219,6 @@ pub fn lsb(value: u64) -> Option<u32> {
 	NonZeroU64::new(value).map(NonZeroU64::trailing_zeros)
 }
 
-/// The halt function stops the processor until the next interrupt arrives
-pub fn halt() {
-	riscv::asm::wfi();
-}
-
 /// Shutdown the system
 #[allow(unused_variables)]
 pub fn shutdown(error_code: i32) -> ! {

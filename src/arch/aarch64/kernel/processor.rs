@@ -200,11 +200,6 @@ pub fn seed_entropy() -> Option<[u8; 32]> {
 	None
 }
 
-/// The halt function stops the processor until the next interrupt arrives
-pub fn halt() {
-	aarch64_cpu::asm::wfi();
-}
-
 /// Shutdown the system
 #[allow(unused_variables)]
 pub fn shutdown(error_code: i32) -> ! {
