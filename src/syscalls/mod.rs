@@ -3,32 +3,21 @@
 #[cfg(target_os = "none")]
 use core::alloc::{GlobalAlloc, Layout};
 
-use hermit_sync::Lazy;
-
 pub use self::entropy::*;
 pub use self::processor::*;
 pub use self::tasks::*;
-use crate::env;
 #[cfg(target_os = "none")]
 use crate::mm::ALLOCATOR;
-use crate::syscalls::interfaces::SyscallInterface;
+use crate::syscalls::interfaces::Generic;
 
 mod entropy;
 pub(crate) mod interfaces;
 mod processor;
 mod tasks;
 
-pub(crate) static SYS: Lazy<&'static dyn SyscallInterface> = Lazy::new(|| {
-	if env::is_uhyve() {
-		&self::interfaces::Uhyve
-	} else {
-		&self::interfaces::Generic
-	}
-});
+pub(crate) static SYS: Generic = Generic;
 
 pub(crate) fn init() {
-	Lazy::force(&SYS);
-
 	// Perform interface-specific initialization steps.
 	SYS.init();
 

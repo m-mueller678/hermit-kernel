@@ -6,7 +6,6 @@ use uhyve_interface::{Hypercall, HypercallAddress};
 
 use crate::arch;
 use crate::arch::mm::paging::{self, virtual_to_physical};
-use crate::syscalls::interfaces::SyscallInterface;
 
 /// perform a SerialWriteBuffer hypercall with `buf` as payload.
 #[inline]
@@ -78,14 +77,3 @@ pub(crate) fn uhyve_hypercall(hypercall: Hypercall<'_>) {
 }
 
 pub struct Uhyve;
-
-impl SyscallInterface for Uhyve {
-	fn shutdown(&self, error_code: i32) -> ! {
-		let sysexit = ExitParams { arg: error_code };
-		uhyve_hypercall(Hypercall::Exit(&sysexit));
-
-		loop {
-			arch::processor::halt();
-		}
-	}
-}

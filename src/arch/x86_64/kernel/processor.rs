@@ -8,10 +8,9 @@ use core::arch::x86_64::{
 };
 use core::fmt;
 use core::hint::spin_loop;
-use core::num::{NonZero, NonZeroU32};
+use core::num::NonZero;
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use hermit_entry::boot_info::PlatformInfo;
 use hermit_sync::Lazy;
 use raw_cpuid::*;
 use x86_64::instructions::interrupts::int3;
@@ -370,21 +369,6 @@ impl CpuFrequency {
 		Ok(())
 	}
 
-	fn detect_from_hypervisor(&mut self) -> Result<(), ()> {
-		fn detect_from_uhyve() -> Result<u16, ()> {
-			match env::boot_info().platform_info {
-				PlatformInfo::Uhyve { cpu_freq, .. } => Ok(u16::try_from(
-					cpu_freq.map(NonZeroU32::get).unwrap_or_default() / 1000,
-				)
-				.unwrap()),
-				_ => Err(()),
-			}
-		}
-		// future implementations could add support for different hypervisors
-		// by adding or_else here
-		self.set_detected_cpu_frequency(detect_from_uhyve()?, CpuFrequencySources::Hypervisor)
-	}
-
 	extern "x86-interrupt" fn measure_frequency_timer_handler(
 		_stack_frame: interrupts::ExceptionStackFrame,
 	) {
@@ -402,11 +386,6 @@ impl CpuFrequency {
 	#[cfg(target_os = "none")]
 	fn measure_frequency(&mut self) -> Result<(), ()> {
 		use crate::arch::x86_64::kernel::interrupts::IDT;
-
-		// The PIC is not initialized for uhyve, so we cannot measure anything.
-		if env::is_uhyve() {
-			return Err(());
-		}
 
 		// Measure the CPU frequency by counting 3 ticks of a 100Hz timer.
 		let tick_count = 3;
@@ -484,7 +463,6 @@ impl CpuFrequency {
 				.or_else(|_e| self.detect_from_cpuid(&cpuid))
 				.or_else(|_e| self.detect_from_cpuid_tsc_info(&cpuid))
 				.or_else(|_e| self.detect_from_cpuid_hypervisor_info(&cpuid))
-				.or_else(|_e| self.detect_from_hypervisor())
 				.or_else(|_e| self.detect_from_cmdline())
 				.or_else(|_e| self.detect_from_cpuid_brand_string(&cpuid))
 				.or_else(|_e| self.measure_frequency())
@@ -671,7 +649,7 @@ impl fmt::Display for CpuFeaturePrinter {
 }
 
 pub(crate) fn run_on_hypervisor() -> bool {
-	env::is_uhyve() || FEATURES.run_on_hypervisor
+	FEATURES.run_on_hypervisor
 }
 
 #[derive(Debug)]

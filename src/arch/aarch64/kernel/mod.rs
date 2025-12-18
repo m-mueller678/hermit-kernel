@@ -12,7 +12,8 @@ mod start;
 pub mod systemtime;
 
 use alloc::alloc::{Layout, alloc};
-use core::arch::global_asm;
+use core::arch::{asm, global_asm};
+use core::hint::spin_loop;
 use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
 use core::{ptr, str};
 
@@ -22,6 +23,8 @@ use crate::arch::aarch64::kernel::core_local::*;
 use crate::arch::aarch64::mm::paging::{BasePageSize, PageSize};
 use crate::config::*;
 use crate::env;
+use crate::kernel::start::{TTBR0, smp_start};
+use crate::mm::virtual_to_physical;
 
 #[repr(align(8))]
 pub(crate) struct AlignedAtomicU32(AtomicU32);
@@ -35,10 +38,6 @@ pub(crate) static CURRENT_STACK_ADDRESS: AtomicPtr<u8> = AtomicPtr::new(ptr::nul
 
 #[cfg(target_os = "none")]
 global_asm!(include_str!("start.s"));
-
-pub fn is_uhyve_with_pci() -> bool {
-	false
-}
 
 pub fn get_ram_address() -> PhysAddr {
 	PhysAddr::new(env::boot_info().hardware_info.phys_addr_range.start)
@@ -74,10 +73,7 @@ pub fn args() -> Option<&'static str> {
 /// Real Boot Processor initialization as soon as we have put the first Welcome message on the screen.
 #[cfg(target_os = "none")]
 pub fn boot_processor_init() {
-	if !crate::env::is_uhyve() {
-		processor::configure();
-	}
-
+	processor::configure();
 	crate::mm::init();
 	crate::mm::print_information();
 	CoreLocal::get().add_irq_counter();
@@ -116,15 +112,7 @@ pub fn boot_next_processor() {
 	// to initialize the next processor.
 	#[allow(unused_variables)]
 	let cpu_online = CPU_ONLINE.0.fetch_add(1, Ordering::Release);
-
-	#[cfg(target_os = "none")]
-	if !env::is_uhyve() && get_possible_cpus() > 1 {
-		use core::arch::asm;
-		use core::hint::spin_loop;
-
-		use crate::kernel::start::{TTBR0, smp_start};
-		use crate::mm::virtual_to_physical;
-
+	{
 		if cpu_online == 0 {
 			use aarch64_cpu::registers::{Readable, TTBR0_EL1};
 

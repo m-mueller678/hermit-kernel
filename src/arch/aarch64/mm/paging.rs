@@ -11,7 +11,6 @@ use free_list::PageLayout;
 use memory_addresses::{PhysAddr, VirtAddr};
 
 use crate::arch::aarch64::kernel::{get_base_address, get_image_size, get_ram_address, processor};
-use crate::env::is_uhyve;
 use crate::mm::{FrameAlloc, PageRangeAllocator};
 use crate::{KERNEL_STACK_SIZE, mm, scheduler};
 

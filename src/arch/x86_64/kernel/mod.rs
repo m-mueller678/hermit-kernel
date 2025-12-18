@@ -6,7 +6,7 @@ use memory_addresses::{PhysAddr, VirtAddr};
 use x86_64::registers::control::{Cr0, Cr4};
 
 use crate::arch::x86_64::kernel::core_local::*;
-use crate::env::{self, is_uhyve};
+use crate::env::{self};
 
 #[cfg(feature = "acpi")]
 pub mod acpi;
@@ -60,13 +60,6 @@ pub fn get_processor_count() -> u32 {
 	CPU_ONLINE.load(Ordering::Acquire)
 }
 
-pub fn is_uhyve_with_pci() -> bool {
-	matches!(
-		env::boot_info().platform_info,
-		PlatformInfo::Uhyve { has_pci: true, .. }
-	)
-}
-
 pub fn args() -> Option<&'static str> {
 	match env::boot_info().platform_info {
 		PlatformInfo::Multiboot { command_line, .. }
@@ -81,7 +74,7 @@ pub fn boot_processor_init() {
 	processor::detect_features();
 	processor::configure();
 
-	if cfg!(feature = "vga") && !env::is_uhyve() {
+	if cfg!(feature = "vga") {
 		#[cfg(feature = "vga")]
 		vga::init();
 	}
@@ -102,18 +95,13 @@ pub fn boot_processor_init() {
 	interrupts::install();
 	systemtime::init();
 
-	if !env::is_uhyve() {
-		#[cfg(feature = "acpi")]
-		acpi::init();
-	}
-	if is_uhyve_with_pci() || !is_uhyve() {
-		#[cfg(feature = "pci")]
-		pci::init();
-	}
+	#[cfg(feature = "acpi")]
+	acpi::init();
+	#[cfg(feature = "pci")]
+	pci::init();
 
 	apic::init();
 	scheduler::install_timer_handler();
-	finish_processor_init();
 }
 
 /// Application Processor initialization
@@ -129,29 +117,17 @@ pub fn application_processor_init() {
 	apic::init_local_apic();
 	debug!("Cr0 = {:?}", Cr0::read());
 	debug!("Cr4 = {:?}", Cr4::read());
-	finish_processor_init();
 }
 
-fn finish_processor_init() {
-	if env::is_uhyve() {
-		// uhyve does not use apic::detect_from_acpi and therefore does not know the number of processors and
-		// their APIC IDs in advance.
-		// Therefore, we have to add each booted processor into the CPU_LOCAL_APIC_IDS vector ourselves.
-		// Fortunately, the Local APIC IDs of uhyve are sequential and therefore match the Core IDs.
-		apic::add_local_apic_id(core_id() as u8);
-
-		// uhyve also boots each processor into _start itself and does not use apic::boot_application_processors.
-		// Therefore, the current processor already needs to prepare the processor variables for a possible next processor.
-		apic::init_next_processor_variables();
-	}
-}
+#[deprecated]
+fn finish_processor_init() {}
 
 pub fn boot_next_processor() {
 	// This triggers apic::boot_application_processors (bare-metal/QEMU) or uhyve
 	// to initialize the next processor.
 	let cpu_online = CPU_ONLINE.fetch_add(1, Ordering::Release);
 
-	if !env::is_uhyve() && cpu_online == 0 {
+	if cpu_online == 0 {
 		#[cfg(target_os = "none")]
 		apic::boot_application_processors();
 	}

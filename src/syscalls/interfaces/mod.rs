@@ -1,19 +1,19 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-pub use self::generic::*;
-pub use self::uhyve::*;
 use crate::{arch, env};
 
-mod generic;
 pub(crate) mod uhyve;
 
-pub trait SyscallInterface: Send + Sync {
-	fn init(&self) {
+// The generic interface simply uses all default implementations of the
+// SyscallInterface trait.
+pub struct Generic;
+impl Generic {
+	pub fn init(&self) {
 		// Interface-specific initialization steps.
 	}
 
-	fn get_application_parameters(&self) -> (i32, *const *const u8, *const *const u8) {
+	pub fn get_application_parameters(&self) -> (i32, *const *const u8, *const *const u8) {
 		let mut argv = Vec::new();
 
 		let name = Box::leak(Box::new("bin\0")).as_ptr();
@@ -48,7 +48,7 @@ pub trait SyscallInterface: Send + Sync {
 		(argc, argv, envv)
 	}
 
-	fn shutdown(&self, error_code: i32) -> ! {
+	pub fn shutdown(&self, error_code: i32) -> ! {
 		// This is a stable message used for detecting exit codes for different hypervisors.
 		panic_println!("exit status {error_code}");
 

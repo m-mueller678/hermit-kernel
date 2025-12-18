@@ -8,14 +8,10 @@ use hermit_sync::{InterruptTicketMutex, Lazy};
 
 use crate::arch::SerialDevice;
 use crate::errno::Errno;
-#[cfg(not(target_arch = "riscv64"))]
-use crate::syscalls::interfaces::serial_buf_hypercall;
 
 const SERIAL_BUFFER_SIZE: usize = 256;
 
 pub(crate) enum IoDevice {
-	#[cfg(not(target_arch = "riscv64"))]
-	Uhyve(UhyveSerial),
 	Uart(SerialDevice),
 }
 
@@ -26,8 +22,6 @@ impl ErrorType for IoDevice {
 impl Read for IoDevice {
 	fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
 		match self {
-			#[cfg(not(target_arch = "riscv64"))]
-			IoDevice::Uhyve(s) => s.read(buf),
 			IoDevice::Uart(s) => s.read(buf),
 		}
 	}
@@ -36,8 +30,6 @@ impl Read for IoDevice {
 impl ReadReady for IoDevice {
 	fn read_ready(&mut self) -> Result<bool, Self::Error> {
 		match self {
-			#[cfg(not(target_arch = "riscv64"))]
-			IoDevice::Uhyve(s) => s.read_ready(),
 			IoDevice::Uart(s) => s.read_ready(),
 		}
 	}
@@ -46,8 +38,6 @@ impl ReadReady for IoDevice {
 impl Write for IoDevice {
 	fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
 		match self {
-			#[cfg(not(target_arch = "riscv64"))]
-			IoDevice::Uhyve(s) => s.write_all(buf)?,
 			IoDevice::Uart(s) => s.write_all(buf)?,
 		};
 
@@ -58,48 +48,6 @@ impl Write for IoDevice {
 			crate::arch::kernel::vga::write_byte(byte);
 		}
 
-		Ok(buf.len())
-	}
-
-	fn flush(&mut self) -> Result<(), Self::Error> {
-		Ok(())
-	}
-}
-
-#[cfg(not(target_arch = "riscv64"))]
-pub(crate) struct UhyveSerial;
-
-#[cfg(not(target_arch = "riscv64"))]
-impl UhyveSerial {
-	pub const fn new() -> Self {
-		Self {}
-	}
-}
-
-#[cfg(not(target_arch = "riscv64"))]
-impl ErrorType for UhyveSerial {
-	type Error = Errno;
-}
-
-#[cfg(not(target_arch = "riscv64"))]
-impl Read for UhyveSerial {
-	fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-		let _ = buf;
-		Ok(0)
-	}
-}
-
-#[cfg(not(target_arch = "riscv64"))]
-impl ReadReady for UhyveSerial {
-	fn read_ready(&mut self) -> Result<bool, Self::Error> {
-		Ok(false)
-	}
-}
-
-#[cfg(not(target_arch = "riscv64"))]
-impl Write for UhyveSerial {
-	fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-		serial_buf_hypercall(buf);
 		Ok(buf.len())
 	}
 
@@ -178,14 +126,6 @@ impl Write for Console {
 
 pub(crate) static CONSOLE: Lazy<InterruptTicketMutex<Console>> = Lazy::new(|| {
 	crate::CoreLocal::install();
-
-	#[cfg(not(target_arch = "riscv64"))]
-	if crate::env::is_uhyve() {
-		InterruptTicketMutex::new(Console::new(IoDevice::Uhyve(UhyveSerial::new())))
-	} else {
-		InterruptTicketMutex::new(Console::new(IoDevice::Uart(SerialDevice::new())))
-	}
-	#[cfg(target_arch = "riscv64")]
 	InterruptTicketMutex::new(Console::new(IoDevice::Uart(SerialDevice::new())))
 });
 

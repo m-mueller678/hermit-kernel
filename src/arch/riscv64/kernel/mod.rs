@@ -38,10 +38,6 @@ static NUM_CPUS: AtomicU32 = AtomicU32::new(0);
 
 // FUNCTIONS
 
-pub fn is_uhyve_with_pci() -> bool {
-	false
-}
-
 pub fn get_ram_address() -> PhysAddr {
 	PhysAddr::new(env::boot_info().hardware_info.phys_addr_range.start)
 }
@@ -156,14 +152,11 @@ pub fn boot_next_processor() {
 			next_hart_id
 		);
 
-		// TODO: Old: Changing cpu_online will cause uhyve to start the next processor
 		CPU_ONLINE.fetch_add(1, Ordering::Release);
 
 		//When running bare-metal/QEMU we use the firmware to start the next hart
-		if !env::is_uhyve() {
-			let start_addr = start::_start as *const () as usize;
-			sbi_rt::hart_start(next_hart_id as usize, start_addr, 0).unwrap();
-		}
+		let start_addr = start::_start as *const () as usize;
+		sbi_rt::hart_start(next_hart_id as usize, start_addr, 0).unwrap();
 	} else {
 		info!("All processors are initialized");
 		CPU_ONLINE.fetch_add(1, Ordering::Release);

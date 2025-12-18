@@ -9,7 +9,7 @@ use ahash::RandomState;
 use fdt::Fdt;
 use hashbrown::HashMap;
 use hashbrown::hash_map::Iter;
-use hermit_entry::boot_info::{BootInfo, PlatformInfo, RawBootInfo};
+use hermit_entry::boot_info::{BootInfo, RawBootInfo};
 use hermit_sync::OnceCell;
 
 pub(crate) use crate::arch::kernel::{self, get_base_address, get_image_size, get_ram_address};
@@ -41,11 +41,6 @@ struct Cli {
 	args: Vec<String>,
 	#[allow(dead_code)]
 	mmio: Vec<String>,
-}
-
-/// Whether Hermit is running under the "uhyve" hypervisor.
-pub fn is_uhyve() -> bool {
-	matches!(boot_info().platform_info, PlatformInfo::Uhyve { .. })
 }
 
 pub fn is_uefi() -> bool {
@@ -89,6 +84,7 @@ impl Default for Cli {
 		let words = shell_words::split(args).unwrap();
 
 		let mut words = words.into_iter();
+		#[cfg(not(target_arch = "riscv64"))]
 		let expect_arg = |arg: Option<String>, name: &str| {
 			arg.unwrap_or_else(|| {
 				panic!("The argument '{name}' requires a value but none was supplied")
@@ -109,22 +105,6 @@ impl Default for Cli {
 				"-freq" => {
 					let s = expect_arg(words.next(), word.as_str());
 					freq = Some(s.parse().unwrap());
-				}
-				"-ip" => {
-					let ip = expect_arg(words.next(), word.as_str());
-					env_vars.insert(String::from("HERMIT_IP"), ip);
-				}
-				"-mask" => {
-					let mask = expect_arg(words.next(), word.as_str());
-					env_vars.insert(String::from("HERMIT_MASK"), mask);
-				}
-				"-gateway" => {
-					let gateway = expect_arg(words.next(), word.as_str());
-					env_vars.insert(String::from("HERMIT_GATEWAY"), gateway);
-				}
-				"-mount" => {
-					let gateway = expect_arg(words.next(), word.as_str());
-					env_vars.insert(String::from("UHYVE_MOUNT"), gateway);
 				}
 				"--" => args.extend(&mut words),
 				word if word.contains('=') => {

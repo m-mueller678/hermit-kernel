@@ -49,7 +49,6 @@ use arch::core_local::*;
 pub(crate) use crate::arch::*;
 pub use crate::config::DEFAULT_STACK_SIZE;
 pub(crate) use crate::config::*;
-use crate::kernel::is_uhyve_with_pci;
 use crate::scheduler::{PerCoreScheduler, PerCoreSchedulerExt};
 
 #[macro_use]
@@ -82,9 +81,6 @@ hermit_entry::define_abi_tag!();
 #[cfg(target_os = "none")]
 hermit_entry::define_entry_version!();
 
-#[cfg(target_os = "none")]
-hermit_entry::define_uhyve_interface_version!(uhyve_interface::UHYVE_INTERFACE_VERSION);
-
 #[cfg(test)]
 #[cfg(target_os = "none")]
 #[unsafe(no_mangle)]
@@ -114,12 +110,6 @@ fn trivial_test() {
 /// Entry point of a kernel thread, which initialize the libos
 #[cfg(target_os = "none")]
 extern "C" fn initd(_arg: usize) {
-	if env::is_uhyve() {
-		info!("Hermit is running on uhyve!");
-	} else {
-		info!("Hermit is running on common system!");
-	}
-
 	// Initialize Drivers
 	drivers::init();
 
@@ -218,10 +208,8 @@ fn boot_processor_main() -> ! {
 	#[cfg(all(feature = "fsgsbase", target_arch = "x86_64"))]
 	info!("Compiled with FSGSBASE support");
 
-	if is_uhyve_with_pci() || !env::is_uhyve() {
-		#[cfg(feature = "pci")]
-		crate::drivers::pci::print_information();
-	}
+	#[cfg(feature = "pci")]
+	crate::drivers::pci::print_information();
 
 	// Start the initd task.
 	unsafe {

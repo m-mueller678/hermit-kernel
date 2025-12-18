@@ -479,14 +479,8 @@ fn detect_from_mp() -> Result<PhysAddr, ()> {
 
 fn default_apic() -> PhysAddr {
 	let default_address = PhysAddr::new(0xfee0_0000);
-
 	warn!("Using default APIC address: {default_address:p}");
-
-	// currently, uhyve doesn't support an IO-APIC
-	if !env::is_uhyve() {
-		init_ioapic_address(default_address);
-	}
-
+	init_ioapic_address(default_address);
 	default_address
 }
 
@@ -496,9 +490,7 @@ pub fn eoi() {
 
 pub fn init() {
 	// Detect CPUs and APICs.
-	let local_apic_physical_address = if env::is_uhyve() {
-		default_apic()
-	} else {
+	let local_apic_physical_address = {
 		detect_from_acpi()
 			.or_else(|()| detect_from_mp())
 			.unwrap_or_else(|()| default_apic())
@@ -559,11 +551,8 @@ pub fn init() {
 		calibrate_timer();
 	}
 
-	// currently, IO-APIC isn't supported by uhyve
-	if !env::is_uhyve() {
-		// initialize IO-APIC
-		init_ioapic();
-	}
+	// initialize IO-APIC
+	init_ioapic();
 }
 
 fn init_ioapic() {
