@@ -46,13 +46,6 @@ macro_rules! long_panic{
     };
 }
 
-#[macro_export]
-macro_rules! panic_println {
-    ($($arg:tt)*) => {
-        println!($($arg)*);
-    };
-}
-
 /// Prints and returns the value of a given expression for quick and dirty
 /// debugging.
 // Copied from std/macros.rs
