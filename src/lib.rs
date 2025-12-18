@@ -65,7 +65,6 @@ mod drivers;
 mod entropy;
 mod env;
 pub mod errno;
-mod executor;
 #[cfg_attr(not(any(feature = "pci", target_arch = "riscv64")), expect(dead_code))]
 mod init_cell;
 pub mod io;
@@ -123,7 +122,6 @@ extern "C" fn initd(_arg: usize) {
 
 	// Initialize Drivers
 	drivers::init();
-	crate::executor::init();
 
 	syscalls::init();
 
@@ -252,7 +250,6 @@ fn application_processor_main() -> ! {
 	debug!("Entering idle loop for application processor");
 
 	synch_all_cores();
-	crate::executor::init();
 
 	// Run the scheduler loop.
 	PerCoreScheduler::run();

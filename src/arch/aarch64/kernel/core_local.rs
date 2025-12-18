@@ -4,8 +4,7 @@ use core::ptr;
 use core::sync::atomic::Ordering;
 
 use aarch64_cpu::registers::{Readable, TPIDR_EL1, Writeable};
-use async_executor::StaticExecutor;
-use hermit_sync::{InterruptTicketMutex, RawRwSpinLock, RawSpinMutex};
+use hermit_sync::InterruptTicketMutex;
 
 use super::CPU_ONLINE;
 use super::interrupts::{IRQ_COUNTERS, IrqStatistics};
@@ -19,8 +18,6 @@ pub(crate) struct CoreLocal {
 	scheduler: Cell<*mut PerCoreScheduler>,
 	/// Interface to the interrupt counters
 	irq_statistics: &'static IrqStatistics,
-	/// The core-local async executor.
-	ex: StaticExecutor<RawSpinMutex, RawRwSpinLock>,
 	/// Queues to handle incoming requests from the other cores
 	pub scheduler_input: InterruptTicketMutex<SchedulerInput>,
 }
@@ -41,7 +38,6 @@ impl CoreLocal {
 			core_id,
 			scheduler: Cell::new(ptr::null_mut()),
 			irq_statistics,
-			ex: StaticExecutor::new(),
 			scheduler_input: InterruptTicketMutex::new(SchedulerInput::new()),
 		};
 		let this = if core_id == 0 {
@@ -85,10 +81,6 @@ pub(crate) fn core_id() -> CoreId {
 #[inline]
 pub(crate) fn core_scheduler() -> &'static mut PerCoreScheduler {
 	unsafe { CoreLocal::get().scheduler.get().as_mut().unwrap() }
-}
-
-pub(crate) fn ex() -> &'static StaticExecutor<RawSpinMutex, RawRwSpinLock> {
-	&CoreLocal::get().ex
 }
 
 pub(crate) fn set_core_scheduler(scheduler: *mut PerCoreScheduler) {

@@ -103,6 +103,4 @@ pub(crate) fn handle_uart_interrupt() {
 		.clear_interrupts(Interrupts::RXI | Interrupts::RTI);
 
 	drop(guard);
-
-	crate::console::CONSOLE_WAKER.lock().wake();
 }

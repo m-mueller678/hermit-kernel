@@ -272,7 +272,6 @@ impl PerCoreScheduler {
 	#[inline]
 	pub fn handle_waiting_tasks(&mut self) {
 		without_interrupts(|| {
-			crate::executor::run();
 			self.blocked_tasks
 				.handle_waiting_tasks(&mut self.ready_queue);
 		});
@@ -403,9 +402,6 @@ impl PerCoreScheduler {
 			let core_scheduler = core_scheduler();
 			interrupts::disable();
 
-			// run async tasks
-			crate::executor::run();
-
 			// do housekeeping
 			core_scheduler.check_input();
 			core_scheduler.cleanup_tasks();
@@ -435,9 +431,6 @@ impl PerCoreScheduler {
 	/// Triggers the scheduler to reschedule the tasks.
 	/// Interrupt flag must be cleared before calling this function.
 	pub fn scheduler(&mut self) -> Option<*mut usize> {
-		// run background tasks
-		crate::executor::run();
-
 		// Someone wants to give up the CPU
 		// => we have time to cleanup the system
 		self.cleanup_tasks();

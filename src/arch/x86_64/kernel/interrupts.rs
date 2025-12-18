@@ -180,8 +180,6 @@ fn handle_interrupt(_stack_frame: ExceptionStackFrame, index: u8, _error_code: O
 	apic::eoi();
 	increment_irq_counter(index);
 
-	crate::executor::run();
-
 	core_scheduler().reschedule();
 }
 

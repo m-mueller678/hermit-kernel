@@ -8,7 +8,6 @@ use hermit_sync::{InterruptTicketMutex, Lazy};
 
 use crate::arch::SerialDevice;
 use crate::errno::Errno;
-use crate::executor::WakerRegistration;
 #[cfg(not(target_arch = "riscv64"))]
 use crate::syscalls::interfaces::serial_buf_hypercall;
 
@@ -177,8 +176,6 @@ impl Write for Console {
 	}
 }
 
-pub(crate) static CONSOLE_WAKER: InterruptTicketMutex<WakerRegistration> =
-	InterruptTicketMutex::new(WakerRegistration::new());
 pub(crate) static CONSOLE: Lazy<InterruptTicketMutex<Console>> = Lazy::new(|| {
 	crate::CoreLocal::install();
 

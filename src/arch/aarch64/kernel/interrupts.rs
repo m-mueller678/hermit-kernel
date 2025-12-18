@@ -141,7 +141,6 @@ pub(crate) extern "C" fn do_fiq(_state: &State) -> *mut usize {
 				handler();
 			}
 		}
-		crate::executor::run();
 		core_scheduler().handle_waiting_tasks();
 
 		GicV3::end_interrupt(irqid, InterruptGroup::Group1);
@@ -167,7 +166,6 @@ pub(crate) extern "C" fn do_irq(_state: &State) -> *mut usize {
 				handler();
 			}
 		}
-		crate::executor::run();
 		core_scheduler().handle_waiting_tasks();
 
 		GicV3::end_interrupt(irqid, InterruptGroup::Group1);

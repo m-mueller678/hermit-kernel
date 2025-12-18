@@ -86,7 +86,6 @@ pub(crate) fn get_serial_handler() -> (InterruptLine, fn()) {
 		}
 
 		drop(guard);
-		crate::console::CONSOLE_WAKER.lock().wake();
 	}
 
 	interrupts::add_irq_name(SERIAL_IRQ, "COM1");
