@@ -13,7 +13,6 @@ use crate::drivers::InterruptHandlerQueue;
 use crate::drivers::mmio::get_interrupt_handlers;
 #[cfg(feature = "pci")]
 use crate::drivers::pci::get_interrupt_handlers;
-use crate::scheduler;
 
 /// base address of the PLIC, only one access at the same time is allowed
 static PLIC_BASE: SpinMutex<usize> = SpinMutex::new(0x0);

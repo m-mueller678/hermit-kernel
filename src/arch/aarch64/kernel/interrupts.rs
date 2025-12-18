@@ -24,7 +24,7 @@ use crate::drivers::pci::get_interrupt_handlers;
 use crate::drivers::{InterruptHandlerQueue, InterruptLine};
 use crate::kernel::serial::handle_uart_interrupt;
 use crate::mm::{PageAlloc, PageRangeAllocator};
-use crate::scheduler::{self, CoreId};
+use crate::scheduler::CoreId;
 use crate::{core_id, core_scheduler, env};
 
 /// The ID of the first Private Peripheral Interrupt.

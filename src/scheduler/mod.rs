@@ -550,11 +550,6 @@ fn get_tid() -> TaskId {
 	}
 }
 
-#[inline]
-pub(crate) fn abort() -> ! {
-	core_scheduler().exit(-1)
-}
-
 /// Add a per-core scheduler for the current core.
 pub(crate) fn add_current_core() {
 	// Create an idle task for this core.

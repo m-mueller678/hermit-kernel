@@ -2,7 +2,6 @@ use x86_64::instructions::port::Port;
 
 use super::interrupts::IDT;
 use crate::arch::x86_64::kernel::interrupts::ExceptionStackFrame;
-use crate::scheduler;
 
 const PIC1_COMMAND: Port<u8> = Port::new(0x20);
 const PIC1_DATA: Port<u8> = Port::new(0x21);
