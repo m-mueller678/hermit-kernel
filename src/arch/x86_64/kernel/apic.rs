@@ -28,7 +28,7 @@ use crate::arch::x86_64::mm::paging::{
 use crate::config::*;
 use crate::mm::{PageAlloc, PageBox, PageRangeAllocator};
 use crate::scheduler::CoreId;
-use crate::{arch, env, scheduler};
+use crate::{arch, env};
 
 /// APIC Location and Status (R/W) See Table 35-2. See Section 10.4.4, Local APIC  Status and Location.
 const IA32_APIC_BASE: Msr = Msr::new(0x1b);
@@ -252,16 +252,15 @@ extern "x86-interrupt" fn tlb_flush_handler(_stack_frame: interrupts::ExceptionS
 }
 
 extern "x86-interrupt" fn error_interrupt_handler(stack_frame: interrupts::ExceptionStackFrame) {
-	error!("APIC LVT Error Interrupt");
-	error!("ESR: {:#X}", local_apic_read(IA32_X2APIC_ESR));
-	error!("{stack_frame:#?}");
-	eoi();
-	scheduler::abort();
+	long_panic!(
+		("APIC LVT Error Interrupt"),
+		("ESR: {:#X}", local_apic_read(IA32_X2APIC_ESR)),
+		("{stack_frame:#?}"),
+	);
 }
 
 extern "x86-interrupt" fn spurious_interrupt_handler(stack_frame: interrupts::ExceptionStackFrame) {
-	error!("Spurious Interrupt: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Spurious Interrupt: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn wakeup_handler(_stack_frame: interrupts::ExceptionStackFrame) {

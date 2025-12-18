@@ -20,7 +20,7 @@ use crate::drivers::InterruptHandlerQueue;
 use crate::drivers::mmio::get_interrupt_handlers;
 #[cfg(feature = "pci")]
 use crate::drivers::pci::get_interrupt_handlers;
-use crate::scheduler::{self, CoreId};
+use crate::scheduler::CoreId;
 
 static IRQ_HANDLERS: OnceCell<HashMap<u8, InterruptHandlerQueue, RandomState>> = OnceCell::new();
 static IRQ_NAMES: InterruptTicketMutex<HashMap<u8, &'static str, RandomState>> =
@@ -186,45 +186,39 @@ fn handle_interrupt(_stack_frame: ExceptionStackFrame, index: u8, _error_code: O
 }
 
 fn abort(stack_frame: ExceptionStackFrame, index: u8, error_code: Option<u64>) {
-	error!("Exception {index}");
-	error!("Error code: {error_code:?}");
-	error!("Stack frame: {stack_frame:#?}");
-	scheduler::abort();
+	long_panic!(
+		("Exception {index}"),
+		("Error code: {error_code:?}"),
+		("Stack frame: {stack_frame:#?}"),
+	);
 }
 
 extern "x86-interrupt" fn divide_error_exception(stack_frame: ExceptionStackFrame) {
-	error!("Divide Error (#DE) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Divide Error (#DE) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn debug_exception(stack_frame: ExceptionStackFrame) {
-	error!("Debug (#DB) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Debug (#DB) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn nmi_exception(stack_frame: ExceptionStackFrame) {
-	error!("Non-Maskable Interrupt (NMI) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Non-Maskable Interrupt (NMI) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn breakpoint_exception(stack_frame: ExceptionStackFrame) {
-	error!("Breakpoint (#BP) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Breakpoint (#BP) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn overflow_exception(stack_frame: ExceptionStackFrame) {
-	error!("Overflow (#OF) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Overflow (#OF) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn bound_range_exceeded_exception(stack_frame: ExceptionStackFrame) {
-	error!("BOUND Range Exceeded (#BR) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("BOUND Range Exceeded (#BR) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn invalid_opcode_exception(stack_frame: ExceptionStackFrame) {
-	error!("Invalid Opcode (#UD) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Invalid Opcode (#UD) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn device_not_available_exception(_stack_frame: ExceptionStackFrame) {
@@ -243,70 +237,62 @@ extern "x86-interrupt" fn device_not_available_exception(_stack_frame: Exception
 }
 
 extern "x86-interrupt" fn invalid_tss_exception(stack_frame: ExceptionStackFrame, _code: u64) {
-	error!("Invalid TSS (#TS) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Invalid TSS (#TS) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn segment_not_present_exception(
 	stack_frame: ExceptionStackFrame,
 	_code: u64,
 ) {
-	error!("Segment Not Present (#NP) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Segment Not Present (#NP) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn stack_segment_fault_exception(
 	stack_frame: ExceptionStackFrame,
 	error_code: u64,
 ) {
-	error!("Stack Segment Fault (#SS) Exception: {stack_frame:#?}, error {error_code:#X}");
-	scheduler::abort();
+	panic!("Stack Segment Fault (#SS) Exception: {stack_frame:#?}, error {error_code:#X}");
 }
 
 extern "x86-interrupt" fn general_protection_exception(
 	stack_frame: ExceptionStackFrame,
 	error_code: u64,
 ) {
-	error!("General Protection (#GP) Exception: {stack_frame:#?}, error {error_code:#X}");
-	error!(
-		"fs = {:#X}, gs = {:#X}",
-		processor::readfs(),
-		processor::readgs()
+	long_panic!(
+		("General Protection (#GP) Exception: {stack_frame:#?}, error {error_code:#X}"),
+		(
+			"fs = {:#X}, gs = {:#X}",
+			processor::readfs(),
+			processor::readgs()
+		),
 	);
-	scheduler::abort();
 }
 
 extern "x86-interrupt" fn double_fault_exception(
 	stack_frame: ExceptionStackFrame,
 	error_code: u64,
 ) -> ! {
-	error!("Double Fault (#DF) Exception: {stack_frame:#?}, error {error_code:#X}");
-	scheduler::abort()
+	panic!("Double Fault (#DF) Exception: {stack_frame:#?}, error {error_code:#X}");
 }
 
 extern "x86-interrupt" fn floating_point_exception(stack_frame: ExceptionStackFrame) {
-	error!("Floating-Point Error (#MF) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Floating-Point Error (#MF) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn alignment_check_exception(stack_frame: ExceptionStackFrame, _code: u64) {
-	error!("Alignment Check (#AC) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Alignment Check (#AC) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn machine_check_exception(stack_frame: ExceptionStackFrame) -> ! {
-	error!("Machine Check (#MC) Exception: {stack_frame:#?}");
-	scheduler::abort()
+	panic!("Machine Check (#MC) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn simd_floating_point_exception(stack_frame: ExceptionStackFrame) {
-	error!("SIMD Floating-Point (#XM) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("SIMD Floating-Point (#XM) Exception: {stack_frame:#?}");
 }
 
 extern "x86-interrupt" fn virtualization_exception(stack_frame: ExceptionStackFrame) {
-	error!("Virtualization (#VE) Exception: {stack_frame:#?}");
-	scheduler::abort();
+	panic!("Virtualization (#VE) Exception: {stack_frame:#?}");
 }
 
 pub(crate) fn add_irq_name(irq_number: u8, name: &'static str) {

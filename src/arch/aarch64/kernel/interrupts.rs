@@ -197,20 +197,14 @@ pub(crate) extern "C" fn do_sync(state: &State) {
 
 			// add page fault handler
 
-			error!("Current stack pointer {state:p}");
-			error!("Unable to handle page fault at {far:#x}");
-			error!("Exception return address {:#x}", ELR_EL1.get());
-			error!("Thread ID register {:#x}", TPIDR_EL0.get());
-			error!("Table Base Register {:#x}", TTBR0_EL1.get());
-			error!("Exception Syndrome Register {esr:#x}");
-
-			if let Some(irqid) = GicV3::get_and_acknowledge_interrupt(InterruptGroup::Group1) {
-				GicV3::end_interrupt(irqid, InterruptGroup::Group1);
-			} else {
-				error!("Unable to acknowledge interrupt!");
-			}
-
-			scheduler::abort()
+			long_panic!(
+				("Current stack pointer {state:p}"),
+				("Unable to handle page fault at {far:#x}"),
+				("Exception return address {:#x}", ELR_EL1.get()),
+				("Thread ID register {:#x}", TPIDR_EL0.get()),
+				("Table Base Register {:#x}", TTBR0_EL1.get()),
+				("Exception Syndrome Register {esr:#x}"),
+			);
 		} else {
 			error!("Unknown exception");
 		}
@@ -241,16 +235,12 @@ pub(crate) extern "C" fn do_sync(state: &State) {
 
 #[unsafe(no_mangle)]
 pub(crate) extern "C" fn do_bad_mode(_state: &State, reason: u32) -> ! {
-	error!("Receive unhandled exception: {reason}");
-
-	scheduler::abort()
+	panic!("Receive unhandled exception: {reason}");
 }
 
 #[unsafe(no_mangle)]
 pub(crate) extern "C" fn do_error(_state: &State) -> ! {
-	error!("Receive error interrupt");
-
-	scheduler::abort()
+	panic!("Receive error interrupt");
 }
 
 pub fn wakeup_core(core_id: CoreId) {

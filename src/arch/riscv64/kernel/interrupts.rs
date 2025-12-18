@@ -171,12 +171,13 @@ pub extern "C" fn trap_handler(tf: &mut TrapFrame) {
 			crate::arch::riscv64::kernel::scheduler::timer_handler();
 		}
 		cause => {
-			error!("Interrupt: {cause:?}");
-			error!("tf = {tf:x?} ");
-			error!("stval = {stval:x}");
-			error!("sepc = {sepc:x}");
-			error!("SSTATUS FS = {:?}", sstatus::read().fs());
-			scheduler::abort();
+			long_panic!(
+				("Interrupt: {cause:?}"),
+				("tf = {tf:x?} "),
+				("stval = {stval:x}"),
+				("sepc = {sepc:x}"),
+				("SSTATUS FS = {:?}", sstatus::read().fs()),
+			);
 		}
 	}
 	trace!("Interrupt end");

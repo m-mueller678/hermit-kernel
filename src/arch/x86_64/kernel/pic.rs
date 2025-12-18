@@ -82,20 +82,11 @@ pub fn init() {
 }
 
 extern "x86-interrupt" fn spurious_interrupt_on_master(_stack_frame: ExceptionStackFrame) {
-	debug!("Spurious Interrupt on Master PIC (IRQ7)");
-	scheduler::abort();
+	panic!("Spurious Interrupt on Master PIC (IRQ7)");
 }
 
 extern "x86-interrupt" fn spurious_interrupt_on_slave(_stack_frame: ExceptionStackFrame) {
-	debug!("Spurious Interrupt on Slave PIC (IRQ15)");
-
-	// As this is an interrupt forwarded by the master, we have to acknowledge it on the master
-	// (but not on the slave as with all spurious interrupts).
-	let mut pic1_command = PIC1_COMMAND;
-	unsafe {
-		pic1_command.write(PIC_EOI_COMMAND);
-	}
-	scheduler::abort();
+	panic!("Spurious Interrupt on Slave PIC (IRQ15)");
 }
 
 fn edit_mask(int_no: u8, insert: bool) {

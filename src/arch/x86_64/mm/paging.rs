@@ -15,8 +15,8 @@ use x86_64::structures::paging::{
 
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::mm::{PhysAddr, VirtAddr};
+use crate::env;
 use crate::mm::{FrameAlloc, PageRangeAllocator};
-use crate::{env, scheduler};
 
 unsafe impl FrameAllocator<Size4KiB> for FrameAlloc {
 	fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
@@ -249,13 +249,14 @@ pub(crate) extern "x86-interrupt" fn page_fault_handler(
 	stack_frame: ExceptionStackFrame,
 	error_code: PageFaultErrorCode,
 ) {
-	error!("Page fault (#PF)!");
-	error!("page_fault_linear_address = {:p}", Cr2::read().unwrap());
-	error!("error_code = {error_code:?}");
-	error!("fs = {:#X}", processor::readfs());
-	error!("gs = {:#X}", processor::readgs());
-	error!("stack_frame = {stack_frame:#?}");
-	scheduler::abort();
+	long_panic!(
+		("Page fault (#PF)!"),
+		("page_fault_linear_address = {:p}", Cr2::read().unwrap()),
+		("error_code = {error_code:?}"),
+		("fs = {:#X}", processor::readfs()),
+		("gs = {:#X}", processor::readgs()),
+		("stack_frame = {stack_frame:#?}"),
+	);
 }
 
 pub fn init() {

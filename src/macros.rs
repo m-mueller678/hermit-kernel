@@ -39,6 +39,16 @@ macro_rules! panic_println {
     }};
 }
 
+#[macro_export]
+macro_rules! long_panic{
+    (_helper_discard_content $($arg:tt)*)=>{
+        "{}\n"
+    };
+    ($(($($arg:tt)*),)+)=>{
+        panic!(concat!($(long_panic!(_helper_discard_content $($arg)*),)+),$(format_args!($($arg)*),)+)
+    };
+}
+
 #[cfg(not(target_os = "none"))]
 #[macro_export]
 macro_rules! panic_println {
