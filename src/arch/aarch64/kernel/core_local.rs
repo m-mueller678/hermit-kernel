@@ -71,11 +71,7 @@ impl CoreLocal {
 
 #[inline]
 pub(crate) fn core_id() -> CoreId {
-	if cfg!(target_os = "none") {
-		CoreLocal::get().core_id
-	} else {
-		0
-	}
+	CoreLocal::get().core_id
 }
 
 #[inline]

@@ -140,13 +140,3 @@ pub fn _panic_print(args: fmt::Arguments<'_>) {
 	console.write_fmt(args).ok();
 	mem::forget(console);
 }
-
-#[cfg(all(test, not(target_os = "none")))]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_console() {
-		println!("HelloWorld");
-	}
-}

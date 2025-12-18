@@ -21,14 +21,11 @@
 	feature(specialization)
 )]
 #![feature(thread_local)]
-#![cfg_attr(target_os = "none", no_std)]
-#![cfg_attr(target_os = "none", feature(custom_test_frameworks))]
-#![cfg_attr(all(target_os = "none", test), test_runner(crate::test_runner))]
-#![cfg_attr(
-	all(target_os = "none", test),
-	reexport_test_harness_main = "test_main"
-)]
-#![cfg_attr(all(target_os = "none", test), no_main)]
+#![no_std]
+#![feature(custom_test_frameworks)]
+#![cfg_attr(test, test_runner(crate::test_runner))]
+#![cfg_attr(test, reexport_test_harness_main = "test_main")]
+#![cfg_attr(test, no_main)]
 
 // EXTERNAL CRATES
 #[macro_use]
@@ -37,9 +34,6 @@ extern crate alloc;
 extern crate bitflags;
 #[macro_use]
 extern crate log;
-#[cfg(not(target_os = "none"))]
-#[macro_use]
-extern crate std;
 
 use core::hint::spin_loop;
 use core::sync::atomic::{AtomicU32, Ordering};
@@ -77,12 +71,9 @@ mod built_info {
 }
 
 hermit_entry::define_abi_tag!();
-
-#[cfg(target_os = "none")]
 hermit_entry::define_entry_version!();
 
 #[cfg(test)]
-#[cfg(target_os = "none")]
 #[unsafe(no_mangle)]
 extern "C" fn runtime_entry(_argc: i32, _argv: *const *const u8, _env: *const *const u8) -> ! {
 	println!("Executing hermit unittests. Any arguments are dropped");
@@ -100,7 +91,6 @@ pub fn test_runner(tests: &[&dyn Fn()]) {
 	core_scheduler().exit(0)
 }
 
-#[cfg(target_os = "none")]
 #[test_case]
 fn trivial_test() {
 	println!("Test test test");
@@ -108,7 +98,6 @@ fn trivial_test() {
 }
 
 /// Entry point of a kernel thread, which initialize the libos
-#[cfg(target_os = "none")]
 extern "C" fn initd(_arg: usize) {
 	// Initialize Drivers
 	drivers::init();
@@ -152,7 +141,6 @@ fn synch_all_cores() {
 }
 
 /// Entry Point of Hermit for the Boot Processor
-#[cfg(target_os = "none")]
 fn boot_processor_main() -> ! {
 	// Initialize the kernel and hardware.
 	hermit_sync::Lazy::force(&console::CONSOLE);
@@ -227,7 +215,6 @@ fn boot_processor_main() -> ! {
 }
 
 /// Entry Point of Hermit for an Application Processor
-#[cfg(target_os = "none")]
 fn application_processor_main() -> ! {
 	arch::application_processor_init();
 	#[cfg(not(target_arch = "riscv64"))]
@@ -243,7 +230,6 @@ fn application_processor_main() -> ! {
 	PerCoreScheduler::run();
 }
 
-#[cfg(target_os = "none")]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 	let core_id = crate::arch::core_local::core_id();

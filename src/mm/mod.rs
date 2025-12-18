@@ -63,19 +63,14 @@ pub use crate::arch::mm::paging::virtual_to_physical;
 use crate::arch::mm::paging::{BasePageSize, LargePageSize, PageSize};
 use crate::{arch, env};
 
-#[cfg(target_os = "none")]
 #[global_allocator]
 pub(crate) static ALLOCATOR: Talck<RawInterruptTicketMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 /// Physical and virtual address range of the 2 MiB pages that map the kernel.
 static KERNEL_ADDR_RANGE: Lazy<Range<VirtAddr>> = Lazy::new(|| {
-	if cfg!(target_os = "none") {
-		// Calculate the start and end addresses of the 2 MiB page(s) that map the kernel.
-		env::get_base_address().align_down(LargePageSize::SIZE)
-			..(env::get_base_address() + env::get_image_size()).align_up(LargePageSize::SIZE)
-	} else {
-		VirtAddr::zero()..VirtAddr::zero()
-	}
+	// Calculate the start and end addresses of the 2 MiB page(s) that map the kernel.
+	env::get_base_address().align_down(LargePageSize::SIZE)
+		..(env::get_base_address() + env::get_image_size()).align_up(LargePageSize::SIZE)
 });
 
 pub(crate) fn kernel_start_address() -> VirtAddr {
@@ -86,7 +81,6 @@ pub(crate) fn kernel_end_address() -> VirtAddr {
 	KERNEL_ADDR_RANGE.end
 }
 
-#[cfg(target_os = "none")]
 pub(crate) fn init() {
 	use crate::arch::mm::paging;
 

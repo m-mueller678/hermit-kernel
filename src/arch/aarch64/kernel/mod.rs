@@ -7,7 +7,6 @@ pub mod pci;
 pub mod processor;
 pub mod scheduler;
 pub mod serial;
-#[cfg(target_os = "none")]
 mod start;
 pub mod systemtime;
 
@@ -36,7 +35,6 @@ pub(crate) static CPU_ONLINE: AlignedAtomicU32 = AlignedAtomicU32(AtomicU32::new
 
 pub(crate) static CURRENT_STACK_ADDRESS: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
 
-#[cfg(target_os = "none")]
 global_asm!(include_str!("start.s"));
 
 pub fn get_ram_address() -> PhysAddr {
@@ -71,7 +69,6 @@ pub fn args() -> Option<&'static str> {
 }
 
 /// Real Boot Processor initialization as soon as we have put the first Welcome message on the screen.
-#[cfg(target_os = "none")]
 pub fn boot_processor_init() {
 	processor::configure();
 	crate::mm::init();

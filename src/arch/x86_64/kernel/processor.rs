@@ -376,14 +376,6 @@ impl CpuFrequency {
 		pic::eoi(pit::PIT_INTERRUPT_NUMBER);
 	}
 
-	#[cfg(not(target_os = "none"))]
-	fn measure_frequency(&mut self) -> Result<(), ()> {
-		// return just Ok because the real implementation must run in ring 0
-		self.source = CpuFrequencySources::Measurement;
-		Ok(())
-	}
-
-	#[cfg(target_os = "none")]
 	fn measure_frequency(&mut self) -> Result<(), ()> {
 		use crate::arch::x86_64::kernel::interrupts::IDT;
 

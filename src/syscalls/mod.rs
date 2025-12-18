@@ -1,12 +1,10 @@
 #![allow(clippy::result_unit_err)]
 
-#[cfg(target_os = "none")]
 use core::alloc::{GlobalAlloc, Layout};
 
 pub use self::entropy::*;
 pub use self::processor::*;
 pub use self::tasks::*;
-#[cfg(target_os = "none")]
 use crate::mm::ALLOCATOR;
 use crate::syscalls::interfaces::Generic;
 
@@ -30,7 +28,6 @@ pub(crate) fn init() {
 /// Returning a null pointer indicates that either memory is exhausted or
 /// `size` and `align` do not meet this allocator's size or alignment constraints.
 ///
-#[cfg(target_os = "none")]
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_alloc(size: usize, align: usize) -> *mut u8 {
@@ -47,7 +44,6 @@ pub extern "C" fn sys_alloc(size: usize, align: usize) -> *mut u8 {
 	ptr
 }
 
-#[cfg(target_os = "none")]
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_alloc_zeroed(size: usize, align: usize) -> *mut u8 {
@@ -66,7 +62,6 @@ pub extern "C" fn sys_alloc_zeroed(size: usize, align: usize) -> *mut u8 {
 	ptr
 }
 
-#[cfg(target_os = "none")]
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_malloc(size: usize, align: usize) -> *mut u8 {
@@ -102,7 +97,6 @@ pub extern "C" fn sys_malloc(size: usize, align: usize) -> *mut u8 {
 /// # Errors
 /// Returns null if the new layout does not meet the size and alignment constraints of the
 /// allocator, or if reallocation otherwise fails.
-#[cfg(target_os = "none")]
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sys_realloc(
@@ -143,7 +137,6 @@ pub unsafe extern "C" fn sys_realloc(
 ///
 /// # Errors
 /// May panic if debug assertions are enabled and invalid parameters `size` or `align` where passed.
-#[cfg(target_os = "none")]
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sys_dealloc(ptr: *mut u8, size: usize, align: usize) {
@@ -163,7 +156,6 @@ pub unsafe extern "C" fn sys_dealloc(ptr: *mut u8, size: usize, align: usize) {
 	}
 }
 
-#[cfg(target_os = "none")]
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sys_free(ptr: *mut u8, size: usize, align: usize) {
@@ -204,7 +196,6 @@ mod tests {
 
 	use super::*;
 
-	#[cfg(target_os = "none")]
 	#[test_case]
 	fn test_get_application_parameters() {
 		crate::env::init();
