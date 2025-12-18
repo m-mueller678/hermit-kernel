@@ -20,18 +20,9 @@ exclude = [
 
 [lib]
 name = "hermit"
-
-[[test]]
-name = "basic_math"
-harness = true
-
-[[test]]
-name = "basic_print"
-harness = false
-
-[[test]]
-name = "measure_startup_time"
-harness = false
+test = false
+doctest = false
+bench = false
 
 [features]
 default = ["kernel-stack", "pci", "pci-ids", "acpi", "fsgsbase"]

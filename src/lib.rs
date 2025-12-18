@@ -23,10 +23,6 @@
 )]
 #![feature(thread_local)]
 #![no_std]
-#![feature(custom_test_frameworks)]
-#![cfg_attr(test, test_runner(crate::test_runner))]
-#![cfg_attr(test, reexport_test_harness_main = "test_main")]
-#![cfg_attr(test, no_main)]
 
 // EXTERNAL CRATES
 #[macro_use]
@@ -74,30 +70,6 @@ mod built_info {
 hermit_entry::define_abi_tag!();
 hermit_entry::define_entry_version!();
 
-#[cfg(test)]
-#[unsafe(no_mangle)]
-extern "C" fn runtime_entry(_argc: i32, _argv: *const *const u8, _env: *const *const u8) -> ! {
-	println!("Executing hermit unittests. Any arguments are dropped");
-	test_main();
-	core_scheduler().exit(0)
-}
-
-//https://github.com/rust-lang/rust/issues/50297#issuecomment-524180479
-#[cfg(test)]
-pub fn test_runner(tests: &[&dyn Fn()]) {
-	println!("Running {} tests", tests.len());
-	for test in tests {
-		test();
-	}
-	core_scheduler().exit(0)
-}
-
-#[test_case]
-fn trivial_test() {
-	println!("Test test test");
-	panic!("Test called");
-}
-
 /// Entry point of a kernel thread, which initialize the libos
 extern "C" fn initd(_arg: usize) {
 	// Initialize Drivers
@@ -106,7 +78,6 @@ extern "C" fn initd(_arg: usize) {
 	syscalls::init();
 
 	// Get the application arguments and environment variables.
-	#[cfg(not(test))]
 	let (argc, argv, environ) = syscalls::get_application_parameters();
 
 	// give the IP thread time to initialize the network interface
@@ -119,15 +90,12 @@ extern "C" fn initd(_arg: usize) {
 
 	info!("Jumping into application");
 
-	#[cfg(not(test))]
 	unsafe {
 		unsafe extern "C" {
 			fn runtime_entry(argc: i32, argv: *const *const u8, env: *const *const u8) -> !;
 		}
 		runtime_entry(argc, argv, environ);
 	}
-	#[cfg(test)]
-	test_main();
 }
 
 fn synch_all_cores() {
