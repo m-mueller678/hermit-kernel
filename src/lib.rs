@@ -204,5 +204,5 @@ fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
 	let core_id = crate::arch::core_local::core_id();
 	panic_println!("[{core_id}][PANIC] {info}\n");
 
-	crate::scheduler::shutdown(1);
+	crate::syscalls::shutdown(1);
 }

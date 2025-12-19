@@ -637,7 +637,3 @@ pub fn join(id: TaskId) -> Result<(), ()> {
 		}
 	}
 }
-
-pub fn shutdown(arg: i32) -> ! {
-	crate::syscalls::shutdown(arg)
-}
