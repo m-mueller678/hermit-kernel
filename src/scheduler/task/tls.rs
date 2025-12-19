@@ -24,34 +24,34 @@ use core::{ptr, slice};
 
 use hermit_entry::boot_info::TlsInfo;
 
-use self::allocation::Allocation;
-
-/// Thread-local storage data structures.
-pub struct Tls {
-	_block: Allocation,
-	thread_ptr: *mut (),
-}
-
 /// Thread control block.
 #[repr(C)]
-struct Tcb {
+pub struct Tcb {
 	/// Thread pointer.
 	#[cfg(target_arch = "x86_64")]
-	thread_ptr: *mut (),
+	thread_ptr: *mut u8,
 
 	/// Pointer to the dynamic thread vector (dtv).
 	///
 	/// Currently not needed on Hermit.
-	dtv: *mut (),
+	dtv: *mut u8,
 
 	/// Implementation-defined TCB data.
 	///
 	/// Currently not used on Hermit.
-	tcb_data: *mut (),
+	tcb_data: *mut u8,
 }
 
-impl Tls {
-	unsafe fn new(tls_info: TlsInfo) -> Self {
+pub struct TlsBuilder {
+	layout: Layout,
+	tls_init_image: &'static [u8],
+	tls_offset: usize,
+	tcb_offset: usize,
+	data_layout_size: usize,
+}
+
+impl TlsBuilder {
+	pub fn new(tls_info: TlsInfo) -> Self {
 		let start = usize::try_from(tls_info.start).unwrap();
 		let filesz = usize::try_from(tls_info.filesz).unwrap();
 		let memsz = usize::try_from(tls_info.memsz).unwrap();
@@ -63,6 +63,7 @@ impl Tls {
 			unsafe { slice::from_raw_parts(start, filesz) }
 		};
 
+		// TODO pad_to_align is probably not necessary here
 		let tcb_layout = Layout::new::<Tcb>().pad_to_align();
 		let data_layout = Layout::from_size_align(memsz, align)
 			.unwrap()
@@ -98,91 +99,66 @@ impl Tls {
 				unimplemented!()
 			};
 
-		let mut block = Allocation::new(layout).unwrap();
+		Self {
+			layout,
+			data_layout_size: data_layout.size(),
+			tls_init_image,
+			tls_offset,
+			tcb_offset,
+		}
+	}
 
-		// Initialize the beginning of the TLS block with the TLS initialization image.
-		block.as_mut_slice()[tls_offset..][..tls_init_image.len()].copy_from_slice(tls_init_image);
-
-		// Fill the rest of the TLS block with zeros.
-		block.as_mut_slice()[tls_offset..][tls_init_image.len()..data_layout.size()]
-			.fill(MaybeUninit::new(0));
-
-		let thread_ptr = if cfg!(target_arch = "riscv64") {
+	/// The offset of thread ptr from the start of a tls allocation
+	fn thread_ptr_offset(&self) -> usize {
+		if cfg!(target_arch = "riscv64") {
 			// On RISC-V, `tp` points to the address one past the end of the TCB.
-			unsafe { block.as_mut_ptr().add(tls_offset).cast() }
+			self.tls_offset
 		} else if cfg!(target_arch = "aarch64") {
 			// For variant I, `tp` points to the start of the block.
-			block.as_mut_ptr().cast()
+			0
 		} else if cfg!(target_arch = "x86_64") {
 			// For variant II, `tp` points to the TCB after the TLS data.
-			unsafe { block.as_mut_ptr().add(tcb_offset).cast() }
+			self.tcb_offset
 		} else {
 			unimplemented!()
-		};
+		}
+	}
 
-		let tcb_ptr = unsafe { block.as_mut_ptr().add(tcb_offset).cast::<Tcb>() };
+	pub fn layout(&self) -> Layout {
+		self.layout
+	}
+
+	/// # Safety
+	/// dst must point to a writeable area suitable for self.layout()
+	pub unsafe fn init(&self, dst: *mut u8) {
+		let block: &mut [MaybeUninit<u8>] =
+			unsafe { slice::from_raw_parts_mut(dst.cast(), self.layout.size()) };
+		// Initialize the beginning of the TLS block with the TLS initialization image.
+		block[self.tls_offset..][..self.tls_init_image.len()]
+			.write_copy_of_slice(self.tls_init_image);
+
+		// Fill the rest of the TLS block with zeros.
+		block[self.tls_offset..][self.tls_init_image.len()..self.data_layout_size]
+			.fill(MaybeUninit::new(0));
+
+		let tcb_ptr = unsafe { block.as_mut_ptr().add(self.tcb_offset).cast::<Tcb>() };
 		let tcb = Tcb {
 			#[cfg(target_arch = "x86_64")]
-			thread_ptr,
+			thread_ptr: unsafe { self.thread_ptr(dst) },
 			dtv: ptr::null_mut(),
 			tcb_data: ptr::null_mut(),
 		};
 		unsafe {
 			tcb_ptr.write(tcb);
 		}
+	}
 
-		Self {
-			_block: block,
-			thread_ptr,
-		}
+	/// dst must point to an area suitable for self.layout()
+	pub unsafe fn thread_ptr(&self, tls_address: *mut u8) -> *mut u8 {
+		unsafe { tls_address.add(self.tcb_offset) }
 	}
 
 	pub fn from_env() -> Option<Self> {
-		let tls_info = crate::env::boot_info().load_info.tls_info?;
-		let this = unsafe { Self::new(tls_info) };
-		Some(this)
-	}
-
-	pub fn thread_ptr(&self) -> *mut () {
-		self.thread_ptr
-	}
-}
-
-mod allocation {
-	use core::alloc::Layout;
-	use core::mem::MaybeUninit;
-	use core::slice;
-
-	pub struct Allocation {
-		ptr: *mut u8,
-		layout: Layout,
-	}
-
-	impl Allocation {
-		pub fn new(layout: Layout) -> Option<Self> {
-			let ptr = unsafe { ::alloc::alloc::alloc(layout) };
-
-			if ptr.is_null() {
-				return None;
-			}
-
-			Some(Self { ptr, layout })
-		}
-
-		pub fn as_mut_ptr(&mut self) -> *mut u8 {
-			self.ptr
-		}
-
-		pub fn as_mut_slice(&mut self) -> &mut [MaybeUninit<u8>] {
-			unsafe { slice::from_raw_parts_mut(self.ptr.cast(), self.layout.size()) }
-		}
-	}
-
-	impl Drop for Allocation {
-		fn drop(&mut self) {
-			unsafe {
-				::alloc::alloc::dealloc(self.ptr, self.layout);
-			}
-		}
+		Some(Self::new(crate::env::boot_info().load_info.tls_info?))
 	}
 }

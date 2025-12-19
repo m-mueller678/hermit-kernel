@@ -1,5 +1,15 @@
 //! Architecture-specific architecture abstraction.
 
+trait TaskTrait {
+	fn create(
+		main: fn(*const u8),
+		main_arg: *const u8,
+		min_stack_size: usize,
+		min_interrupt_stack_size: usize,
+	) -> Self;
+	fn switch(self, from_interrupt_handler: bool) -> Self;
+}
+
 cfg_if::cfg_if! {
 	if #[cfg(target_arch = "aarch64")] {
 		pub(crate) mod aarch64;

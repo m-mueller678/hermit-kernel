@@ -45,6 +45,7 @@ mod page_range_alloc;
 mod physicalmem;
 mod virtualmem;
 
+use core::fmt::Debug;
 use core::mem;
 use core::ops::Range;
 
@@ -60,7 +61,7 @@ pub use self::virtualmem::{PageAlloc, PageBox};
 #[cfg(any(target_arch = "x86_64", target_arch = "riscv64"))]
 use crate::arch::mm::paging::HugePageSize;
 pub use crate::arch::mm::paging::virtual_to_physical;
-use crate::arch::mm::paging::{BasePageSize, LargePageSize, PageSize};
+use crate::arch::mm::paging::{BasePageSize, LargePageSize, PageSize, PageTableEntryFlags};
 use crate::{arch, env};
 
 #[global_allocator]
@@ -244,7 +245,6 @@ pub(crate) fn map(
 	no_execution: bool,
 	no_cache: bool,
 ) -> VirtAddr {
-	use crate::arch::mm::paging::PageTableEntryFlags;
 	#[cfg(target_arch = "x86_64")]
 	use crate::arch::mm::paging::PageTableEntryFlagsExt;
 
@@ -291,5 +291,25 @@ pub(crate) fn unmap(virtual_address: VirtAddr, size: usize) {
 			"No page table entry for virtual address {:p}",
 			virtual_address
 		);
+	}
+}
+
+pub unsafe fn map_alloc_frames<Size: PageSize + Debug, PhysAlloc: PageRangeAllocator>(
+	start: VirtAddr,
+	page_count: usize,
+	flags: PageTableEntryFlags,
+) {
+	let frame_layout =
+		PageLayout::from_size_align(Size::SIZE as usize, Size::SIZE as usize).unwrap();
+	for i in 0..page_count {
+		match PhysAlloc::allocate(frame_layout) {
+			Ok(frame) => arch::mm::paging::map::<Size>(
+				(start + i * Size::SIZE) as usize,
+				PhysAddr::from(frame.start()),
+				1,
+				flags,
+			),
+			Err(_) => todo!(),
+		};
 	}
 }

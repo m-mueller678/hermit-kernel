@@ -1,5 +1,6 @@
 pub mod kernel;
 pub mod mm;
+pub mod task;
 
 /// Force strict CPU ordering, serializes load and store operations.
 #[allow(dead_code)]
