@@ -7,6 +7,7 @@ use x86_64::VirtAddr;
 use x86_64::structures::paging::{PageSize, Size4KiB};
 
 use crate::arch::TaskTrait;
+use crate::mm::{PageAlloc, PageRangeAllocator};
 use crate::scheduler::task::tls::TlsBuilder;
 
 pub struct Task(NonNull<TaskHeader>);
