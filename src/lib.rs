@@ -12,7 +12,6 @@
 #![feature(allocator_api)]
 #![feature(linkage)]
 #![feature(linked_list_cursors)]
-#![feature(pointer_is_aligned_to)]
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_slice)]
 #![feature(never_type)]

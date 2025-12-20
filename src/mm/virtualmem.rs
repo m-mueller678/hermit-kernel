@@ -1,10 +1,9 @@
 use core::alloc::AllocError;
 use core::fmt;
 
-use address_space_integers::target_arch::VirtAddr;
 use free_list::{FreeList, PageLayout, PageRange};
 use hermit_sync::InterruptTicketMutex;
-use x86_64::structures::paging::PageSize;
+use memory_addresses::VirtAddr;
 
 use crate::mm::{PageRangeAllocator, PageRangeBox};
 
@@ -27,7 +26,6 @@ impl PageRangeAllocator for PageAlloc {
 			.map_err(|_| AllocError)
 	}
 
-
 	fn allocate_at(range: PageRange) -> Result<(), AllocError> {
 		KERNEL_FREE_LIST
 			.lock()
@@ -40,14 +38,6 @@ impl PageRangeAllocator for PageAlloc {
 			KERNEL_FREE_LIST.lock().deallocate(range).unwrap();
 		}
 	}
-	fn allocate2<Size: PageSize>(count: usize) -> VirtAddr{
-		Self::allocate(PageLayout::from_size_align(Size::SIZE * count, Size::SIZE))
-	}
-
-	unsafe fn deallocate2<S:Size:PageSize(start:VirtAddr,count:usize)->{
-		Self::deallocate(PageRange::from_start_len(start.as_u64(), count * S::SIZE));
-	}
-
 }
 
 impl fmt::Display for PageAlloc {
@@ -74,7 +64,7 @@ unsafe fn init() {
 /// End of the virtual memory address space reserved for kernel memory (inclusive).
 /// The virtual memory address space reserved for the task heap starts after this.
 #[inline]
-pub fn kernel_heap_end() -> memory_addresses::VirtAddr {
+pub fn kernel_heap_end() -> VirtAddr {
 	cfg_if::cfg_if! {
 		if #[cfg(target_arch = "aarch64")] {
 			// maximum address, which can be supported by TTBR0
@@ -88,9 +78,9 @@ pub fn kernel_heap_end() -> memory_addresses::VirtAddr {
 			let p4_index = PageTableIndex::new(256);
 
 			let addr = u64::from(p4_index) << 39;
-			assert_eq!(memory_addresses::VirtAddr::new_truncate(addr).p4_index(), p4_index);
+			assert_eq!(VirtAddr::new_truncate(addr).p4_index(), p4_index);
 
-			memory_addresses::VirtAddr::new_truncate(addr - 1)
+			VirtAddr::new_truncate(addr - 1)
 		}
 	}
 }
