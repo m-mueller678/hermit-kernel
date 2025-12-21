@@ -13,6 +13,7 @@ const CONFIG_DATA: Port<u32> = Port::new(0xcfc);
 
 #[derive(Debug, Copy, Clone)]
 pub enum PciConfigRegion {
+	#[allow(private_interfaces)]
 	Pci(LegacyPciConfigRegion),
 	#[cfg(feature = "acpi")]
 	PciE(pcie::McfgEntry),
@@ -41,7 +42,7 @@ impl ConfigRegionAccess for PciConfigRegion {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct LegacyPciConfigRegion;
+struct LegacyPciConfigRegion;
 
 impl LegacyPciConfigRegion {
 	pub const fn new() -> Self {
@@ -85,7 +86,7 @@ impl ConfigRegionAccess for LegacyPciConfigRegion {
 	}
 }
 
-pub(crate) fn init() {
+pub fn init() {
 	#[cfg(feature = "acpi")]
 	if pcie::init_pcie() {
 		info!("Initialized PCIe");

@@ -23,9 +23,17 @@ pub trait ArchTrait {
 		+ embedded_io::ErrorType<Error = Errno>
 		+ Send
 		+ Sync;
+
+	#[cfg(feature = "pci")]
+	fn init_pci();
+	#[cfg(feature = "pci")]
+	type PciConfigRegion: ConfigRegionAccess;
+
+	fn shutdown(code: i32) -> !;
 }
 
 pub use arch_impl::Arch;
+use pci_types::ConfigRegionAccess;
 // pub type Arch = impl ArchTrait;
 
 // #[define_opaque(Arch)]
@@ -34,6 +42,8 @@ pub use arch_impl::Arch;
 // }
 
 pub type SerialDevice = <Arch as ArchTrait>::SerialDevice;
+#[cfg(feature = "pci")]
+pub type PciConfigRegion = <Arch as ArchTrait>::PciConfigRegion;
 
 cfg_if::cfg_if! {
 	if #[cfg(target_arch = "aarch64")] {
@@ -60,8 +70,6 @@ cfg_if::cfg_if! {
 
 		pub(crate) use self::x86_64::kernel::core_local;
 		pub(crate) use self::x86_64::kernel::gdt::set_current_kernel_stack;
-		#[cfg(feature = "pci")]
-		pub(crate) use self::x86_64::kernel::pci;
 		pub(crate) use self::x86_64::kernel::processor;
 		pub(crate) use self::x86_64::kernel::scheduler;
 		pub(crate) use self::x86_64::kernel::switch;

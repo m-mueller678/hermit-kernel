@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::{arch, env};
+use crate::{Arch, ArchTrait, env};
 // The generic interface simply uses all default implementations of the
 // SyscallInterface trait.
 pub struct Generic;
@@ -49,6 +49,6 @@ impl Generic {
 		// This is a stable message used for detecting exit codes for different hypervisors.
 		panic_println!("exit status {error_code}");
 
-		arch::processor::shutdown(error_code)
+		Arch::shutdown(error_code)
 	}
 }

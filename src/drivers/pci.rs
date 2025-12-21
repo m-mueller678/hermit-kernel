@@ -14,12 +14,12 @@ use pci_types::{
 	InterruptPin, MAX_BARS, PciAddress, PciHeader, StatusRegister, VendorId,
 };
 
-use crate::arch::pci::PciConfigRegion;
+use crate::arch;
 #[allow(unused_imports)]
 use crate::drivers::{Driver, InterruptHandlerQueue};
 use crate::init_cell::InitCell;
 
-pub(crate) static PCI_DEVICES: InitCell<Vec<PciDevice<PciConfigRegion>>> =
+pub(crate) static PCI_DEVICES: InitCell<Vec<PciDevice<arch::PciConfigRegion>>> =
 	InitCell::new(Vec::new());
 static PCI_DRIVERS: InitCell<Vec<PciDriver>> = InitCell::new(Vec::new());
 

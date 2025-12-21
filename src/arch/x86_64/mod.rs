@@ -51,4 +51,16 @@ impl ArchTrait for Arch {
 	fn disable() {
 		kernel::interrupts::disable();
 	}
+
+	#[cfg(feature = "pci")]
+	fn init_pci() {
+		kernel::pci::init();
+	}
+
+	#[cfg(feature = "pci")]
+	type PciConfigRegion = kernel::pci::PciConfigRegion;
+
+	fn shutdown(code: i32) -> ! {
+		kernel::processor::shutdown(code)
+	}
 }
