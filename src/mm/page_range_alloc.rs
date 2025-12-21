@@ -3,30 +3,37 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
 
+use address_space_integers::paging::PageSize;
+use address_space_integers::target_arch::VirtAddr;
+use address_space_integers::{Address, AddressSpace};
 use free_list::{PageLayout, PageRange};
 
 /// An allocator that allocates memory in page granularity.
-pub trait PageRangeAllocator {
-	unsafe fn init();
+pub trait PageRangeAllocator<A: AddressSpace, P: PageSize> {
+	fn init();
 
 	/// Attempts to allocate a range of memory in page granularity.
-	fn allocate(layout: PageLayout) -> Result<PageRange, AllocError>;
+	fn allocate(size: usize) -> Result<Address<A>, AllocError>;
 
 	/// Attempts to allocate the pages described by `range`.
-	fn allocate_at(range: PageRange) -> Result<(), AllocError>;
+	fn allocate_at(addr: VirtAddr, size: usize) -> Result<(), AllocError>;
 
 	/// Deallocates the pages described by `range`.
 	///
 	/// # Safety
 	///
 	/// - `range` must described a range of pages _currently allocated_ via this allocator.
-	unsafe fn deallocate(range: PageRange);
+	unsafe fn deallocate(addr: Address<A>, size: Address<A>);
 }
 
-pub struct PageRangeBox<A: PageRangeAllocator>(PageRange, PhantomData<A>);
+pub struct PageRangeBox<A: AddressSpace, P: PageSize> {
+	addr: Address<A>,
+	size: Address<A>,
+	_p: PhantomData<P>,
+}
 
-impl<A: PageRangeAllocator> PageRangeBox<A> {
-	pub fn new(layout: PageLayout) -> Result<Self, AllocError> {
+impl<A: AddressSpace, P: PageSize> PageRangeBox<A, P> {
+	pub fn new(size: Address<A>) -> Result<Self, AllocError> {
 		let range = A::allocate(layout)?;
 		Ok(Self(range, PhantomData))
 	}

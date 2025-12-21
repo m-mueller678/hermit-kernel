@@ -12,6 +12,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "address_space_integers"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -622,6 +629,7 @@ name = "hermit-kernel"
 version = "0.12.0"
 dependencies = [
  "aarch64-cpu",
+ "address_space_integers",
  "ahash",
  "align-address",
  "anstyle",

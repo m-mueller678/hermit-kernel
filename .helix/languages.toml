@@ -1,0 +1,36 @@
+[language-server.rust-analyzer.config.cargo]
+buildScripts = { overrideCommand = [
+  "cargo",
+  "check",
+  "--quiet",
+  "--workspace",
+  "--message-format=json",
+  "--keep-going",
+] }
+target = "x86_64-unknown-none"
+# target = "aarch64-unknown-none-softfloat"
+# target = "riscv64gc-unknown-none-elf"
+# noDefaultFeatures = true
+# features = ['console','mman']
+
+[language-server.rust-analyzer.config.check]
+overrideCommand = [
+  "cargo",
+  "clippy",
+  "--message-format=json",
+  "--all-targets",
+  "-Zbuild-std=core,alloc",
+  # "--target=aarch64-unknown-none-softfloat",
+  # "--target=riscv64gc-unknown-none-elf",
+  "--target=x86_64-unknown-none",
+
+  # "--no-default-features",
+  # "--features",
+  # "mman"
+  # "console"
+]
+targets = [
+  # "aarch64-unknown-none-softfloat",
+  # "riscv64gc-unknown-none-elf",
+  "x86_64-unknown-none",
+]
