@@ -1,6 +1,8 @@
-use core::alloc::AllocError;
+use core::alloc::{AllocError, Layout};
 use core::fmt;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::mem::MaybeUninit;
+use core::sync::atomic::Ordering::Relaxed;
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use align_address::Align;
 use free_list::{FreeList, PageLayout, PageRange, PageRangeError};
@@ -9,10 +11,10 @@ use memory_addresses::{PhysAddr, VirtAddr};
 
 #[cfg(target_arch = "x86_64")]
 use crate::arch::mm::paging::PageTableEntryFlagsExt;
-use crate::arch::mm::paging::{self, HugePageSize, PageSize, PageTableEntryFlags};
+use crate::arch::mm::paging::{self, HugePageSize, PageTableEntryFlags};
 use crate::env;
 use crate::mm::device_alloc::DeviceAlloc;
-use crate::mm::{PageRangeAllocator, PageRangeBox};
+use crate::mm::{PageRangeAllocator, PageRangeBox, PageSize};
 
 static PHYSICAL_FREE_LIST: InterruptTicketMutex<FreeList<16>> =
 	InterruptTicketMutex::new(FreeList::new());
@@ -20,30 +22,84 @@ pub static TOTAL_MEMORY: AtomicUsize = AtomicUsize::new(0);
 
 pub struct FrameAlloc;
 
-impl PageRangeAllocator for FrameAlloc {
-	unsafe fn init() {
-		unsafe {
-			init();
+pub trait PhysicalAllocator {
+	fn init();
+	fn allocate_contiguous<S: PageSize>(count: usize) -> Result<usize, AllocError>;
+	/// Allocates all pages or fails
+	/// # Safety
+	/// start must be multiple of page size
+	fn allocate_at<S: PageSize>(start: usize, count: usize) -> Result<(), AllocError>;
+	fn allocate_multiple<S: PageSize>(
+		dst: &mut [MaybeUninit<usize>],
+	) -> Result<&mut [usize], AllocError>;
+	unsafe fn deallocate_multiple<S: PageSize>(pages: &[usize]);
+}
+
+impl PhysicalAllocator for FrameAlloc {
+	fn init() {
+		static ONCE: AtomicBool = AtomicBool::new(false);
+		assert!(!ONCE.swap(true, Relaxed));
+
+		if env::is_uefi() && DeviceAlloc.phys_offset() != VirtAddr::zero() {
+			unimplemented!()
+		}
+
+		if let Err(_err) = unsafe { detect_from_fdt() } {
+			cfg_if::cfg_if! {
+				if #[cfg(any(target_arch = "aarch64", target_arch = "riscv64"))] {
+					error!("Could not detect physical memory from FDT");
+					unsafe { detect_from_limits().unwrap(); }
+				} else {
+					panic!("Could not detect physical memory from FDT");
+				}
+			}
+		};
+	}
+
+	fn allocate_contiguous<S: PageSize>(count: usize) -> Result<usize, AllocError> {
+		let size = S::SIZE.checked_mul(count).ok_or(AllocError)?;
+		match PHYSICAL_FREE_LIST
+			.lock()
+			.allocate(PageLayout::from_size_align(size, S::SIZE).unwrap())
+		{
+			Err(_) => Err(AllocError),
+			Ok(x) => Ok(x.start()),
 		}
 	}
 
-	fn allocate(layout: PageLayout) -> Result<PageRange, AllocError> {
+	fn allocate_at<S: PageSize>(start: usize, count: usize) -> Result<(), AllocError> {
+		assert!(start.is_aligned_to(S::SIZE));
+		let size = S::SIZE.checked_mul(count).ok_or(AllocError)?;
+		let end = start.checked_add(size).ok_or(AllocError)?;
 		PHYSICAL_FREE_LIST
 			.lock()
-			.allocate(layout)
+			.allocate_at(PageRange::new(start, end).unwrap())
 			.map_err(|_| AllocError)
 	}
 
-	fn allocate_at(range: PageRange) -> Result<(), AllocError> {
-		PHYSICAL_FREE_LIST
-			.lock()
-			.allocate_at(range)
-			.map_err(|_| AllocError)
+	fn allocate_multiple<S: PageSize>(
+		dst: &mut [MaybeUninit<usize>],
+	) -> Result<&mut [usize], AllocError> {
+		for i in 0..dst.len() {
+			match Self::allocate_contiguous::<S>(1) {
+				Ok(x) => {
+					dst[i].write(x);
+				}
+				Err(_) => {
+					unsafe { Self::deallocate_multiple::<S>(dst[..i].assume_init_ref()) };
+					return Err(AllocError);
+				}
+			}
+		}
+		Ok(unsafe { dst.assume_init_mut() })
 	}
 
-	unsafe fn deallocate(range: PageRange) {
-		unsafe {
-			PHYSICAL_FREE_LIST.lock().deallocate(range).unwrap();
+	unsafe fn deallocate_multiple<S: PageSize>(pages: &[usize]) {
+		for &page in pages {
+			let range = PageRange::new(page, page + S::SIZE).unwrap();
+			unsafe {
+				PHYSICAL_FREE_LIST.lock().deallocate(range);
+			}
 		}
 	}
 }
@@ -55,13 +111,11 @@ impl fmt::Display for FrameAlloc {
 	}
 }
 
-pub type FrameBox = PageRangeBox<FrameAlloc>;
-
 pub fn total_memory_size() -> usize {
 	TOTAL_MEMORY.load(Ordering::Relaxed)
 }
 
-pub unsafe fn map_frame_range(frame_range: PageRange) {
+unsafe fn map_frame_range(frame_range: PageRange) {
 	cfg_if::cfg_if! {
 		if #[cfg(target_arch = "aarch64")] {
 			type IdentityPageSize = crate::arch::mm::paging::BasePageSize;

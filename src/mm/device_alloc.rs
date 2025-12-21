@@ -19,6 +19,7 @@ unsafe impl Allocator for DeviceAlloc {
 		let size = layout.size().align_up(BasePageSize::SIZE as usize);
 		let frame_layout = PageLayout::from_size(size).unwrap();
 
+		let frame_start = 
 		let frame_range = FrameAlloc::allocate(frame_layout).map_err(|_| AllocError)?;
 
 		let phys_addr = PhysAddr::from(frame_range.start());

@@ -1,41 +1,71 @@
 use core::alloc::AllocError;
 use core::fmt;
+use core::num::NonZeroUsize;
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering::Relaxed;
 
 use free_list::{FreeList, PageLayout, PageRange};
 use hermit_sync::InterruptTicketMutex;
 use memory_addresses::VirtAddr;
 
-use crate::mm::{PageRangeAllocator, PageRangeBox};
+use crate::mm::{PageRangeAllocator, PageRangeBox, PageSize};
+
+pub trait VirtualAllocator {
+	fn init();
+
+	/// Attempts to allocate a range of memory in page granularity.
+	fn allocate<S: PageSize>(count: NonZeroUsize) -> Result<NonZeroUsize, AllocError>;
+
+	// /// Attempts to allocate pages.
+	// /// # Safety
+	// /// start must be a non-zero multiple of the page size
+	// fn allocate_at<S: PageSize>(start: NonZeroUsize, count: NonZeroUsize)
+	// -> Result<(), AllocError>;
+
+	/// Deallocates.
+	///
+	/// # Safety
+	/// - All pages in the range must be currently allocated
+	/// start must be aligned to the page size
+	unsafe fn deallocate<S: PageSize>(start: usize, count: NonZeroUsize);
+}
 
 static KERNEL_FREE_LIST: InterruptTicketMutex<FreeList<16>> =
 	InterruptTicketMutex::new(FreeList::new());
 
 pub struct PageAlloc;
 
-impl PageRangeAllocator for PageAlloc {
-	unsafe fn init() {
-		unsafe {
-			init();
-		}
+impl VirtualAllocator for PageAlloc {
+	fn init() {
+		static ONCE: AtomicBool = AtomicBool::new(false);
+		assert!(!ONCE.swap(true, Relaxed));
+		{
+			unsafe {
+				KERNEL_FREE_LIST.lock().deallocate(
+					PageRange::new(
+						kernel_heap_end().as_usize().div_ceil(2),
+						kernel_heap_end().as_usize() + 1,
+					)
+					.unwrap(),
+				);
+			}
+		};
 	}
 
-	fn allocate(layout: PageLayout) -> Result<PageRange, AllocError> {
+	fn allocate<S: PageSize>(count: NonZeroUsize) -> Result<NonZeroUsize, AllocError> {
+		let size = S::SIZE.checked_mul(count).ok_or(AllocError)?;
 		KERNEL_FREE_LIST
 			.lock()
-			.allocate(layout)
+			.allocate(PageLayout::from_size_align(size, S::SIZE))
 			.map_err(|_| AllocError)
 	}
 
-	fn allocate_at(range: PageRange) -> Result<(), AllocError> {
-		KERNEL_FREE_LIST
-			.lock()
-			.allocate_at(range)
-			.map_err(|_| AllocError)
-	}
-
-	unsafe fn deallocate(range: PageRange) {
+	unsafe fn deallocate<S: PageSize>(start: usize, count: NonZeroUsize) {
 		unsafe {
-			KERNEL_FREE_LIST.lock().deallocate(range).unwrap();
+			KERNEL_FREE_LIST
+				.lock()
+				.deallocate(PageRange::new(start, start + count.get() * S::SIZE))
+				.unwrap();
 		}
 	}
 }
@@ -47,24 +77,10 @@ impl fmt::Display for PageAlloc {
 	}
 }
 
-pub type PageBox = PageRangeBox<PageAlloc>;
-
-unsafe fn init() {
-	let range = PageRange::new(
-		kernel_heap_end().as_usize().div_ceil(2),
-		kernel_heap_end().as_usize() + 1,
-	)
-	.unwrap();
-
-	unsafe {
-		PageAlloc::deallocate(range);
-	}
-}
-
 /// End of the virtual memory address space reserved for kernel memory (inclusive).
 /// The virtual memory address space reserved for the task heap starts after this.
 #[inline]
-pub fn kernel_heap_end() -> VirtAddr {
+fn kernel_heap_end() -> VirtAddr {
 	cfg_if::cfg_if! {
 		if #[cfg(target_arch = "aarch64")] {
 			// maximum address, which can be supported by TTBR0

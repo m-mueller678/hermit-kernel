@@ -1,5 +1,7 @@
 pub mod kernel;
 pub mod mm;
+pub use kernel::pci;
+pub use mm::paging::{BasePageSize, HugePageSize};
 
 /// Force strict CPU ordering, serializes load and store operations.
 #[allow(dead_code)]

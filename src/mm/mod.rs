@@ -42,6 +42,7 @@
 
 pub(crate) mod device_alloc;
 mod page_range_alloc;
+pub mod pages_size;
 mod physicalmem;
 mod virtualmem;
 
