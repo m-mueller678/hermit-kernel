@@ -37,13 +37,8 @@ impl UartDevice {
 	}
 }
 
-pub(crate) struct SerialDevice;
-
-impl SerialDevice {
-	pub fn new() -> Self {
-		Self {}
-	}
-}
+#[derive(Default)]
+pub struct SerialDevice;
 
 impl ErrorType for SerialDevice {
 	type Error = Errno;

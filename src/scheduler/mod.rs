@@ -16,11 +16,11 @@ use hermit_sync::*;
 use riscv::register::sstatus;
 
 use crate::arch::core_local::*;
+use crate::arch::get_processor_count;
 #[cfg(target_arch = "riscv64")]
 use crate::arch::switch::switch_to_task;
 #[cfg(target_arch = "x86_64")]
 use crate::arch::switch::{switch_to_fpu_owner, switch_to_task};
-use crate::arch::{get_processor_count, interrupts};
 use crate::kernel::scheduler::TaskStacks;
 use crate::scheduler::task::*;
 use crate::{Arch, ArchTrait};
@@ -400,7 +400,7 @@ impl PerCoreScheduler {
 
 		loop {
 			let core_scheduler = core_scheduler();
-			interrupts::disable();
+			Arch::disable();
 
 			// do housekeeping
 			core_scheduler.check_input();
@@ -408,14 +408,14 @@ impl PerCoreScheduler {
 
 			if core_scheduler.ready_queue.is_empty() {
 				if backoff.is_completed() {
-					interrupts::enable_and_wait();
+					Arch::enable_and_wait();
 					backoff.reset();
 				} else {
-					interrupts::enable();
+					Arch::enable();
 					backoff.snooze();
 				}
 			} else {
-				interrupts::enable();
+				Arch::enable();
 				core_scheduler.reschedule();
 				backoff.reset();
 			}

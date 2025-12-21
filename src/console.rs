@@ -6,7 +6,7 @@ use embedded_io::{ErrorType, Read, ReadReady, Write};
 use heapless::Vec;
 use hermit_sync::{InterruptTicketMutex, Lazy};
 
-use crate::arch::SerialDevice;
+use crate::SerialDevice;
 use crate::errno::Errno;
 
 const SERIAL_BUFFER_SIZE: usize = 256;
@@ -126,7 +126,7 @@ impl Write for Console {
 
 pub(crate) static CONSOLE: Lazy<InterruptTicketMutex<Console>> = Lazy::new(|| {
 	crate::CoreLocal::install();
-	InterruptTicketMutex::new(Console::new(IoDevice::Uart(SerialDevice::new())))
+	InterruptTicketMutex::new(Console::new(IoDevice::Uart(SerialDevice::default())))
 });
 
 #[doc(hidden)]

@@ -1,13 +1,39 @@
 //! Architecture-specific architecture abstraction.
 
+use crate::errno::Errno;
 use crate::scheduler::CoreId;
 
 pub trait ArchTrait {
 	fn set_oneshot_timer(wakeup_time: Option<u64>);
 	fn wakeup_core(core_id_to_wakeup: CoreId);
 
+	fn boot_processor_init();
 	fn application_processor_init();
+
+	// Todo rename these
+	fn enable_and_wait();
+	fn install_handlers();
+	fn enable();
+	fn disable();
+
+	type SerialDevice: Default
+		+ embedded_io::Read
+		+ embedded_io::Write
+		+ embedded_io::ReadReady
+		+ embedded_io::ErrorType<Error = Errno>
+		+ Send
+		+ Sync;
 }
+
+pub use arch_impl::Arch;
+// pub type Arch = impl ArchTrait;
+
+// #[define_opaque(Arch)]
+// fn _constrain_arch() -> Arch {
+// 	arch_impl::Arch
+// }
+
+pub type SerialDevice = <Arch as ArchTrait>::SerialDevice;
 
 cfg_if::cfg_if! {
 	if #[cfg(target_arch = "aarch64")] {
@@ -29,19 +55,16 @@ cfg_if::cfg_if! {
 		pub use self::aarch64::mm::paging::{BasePageSize, PageSize};
 	} else if #[cfg(target_arch = "x86_64")] {
 		pub(crate) mod x86_64;
+		use x86_64 as arch_impl;
 		pub(crate) use self::x86_64::*;
-		pub(crate) use self::x86_64::Arch;
 
 		pub(crate) use self::x86_64::kernel::core_local;
 		pub(crate) use self::x86_64::kernel::gdt::set_current_kernel_stack;
-		pub(crate) use self::x86_64::kernel::interrupts;
 		#[cfg(feature = "pci")]
 		pub(crate) use self::x86_64::kernel::pci;
 		pub(crate) use self::x86_64::kernel::processor;
-		pub(crate) use self::x86_64::kernel::serial::SerialDevice;
 		pub(crate) use self::x86_64::kernel::scheduler;
 		pub(crate) use self::x86_64::kernel::switch;
-		pub(crate) use self::x86_64::kernel::boot_processor_init;
 		pub(crate) use self::x86_64::kernel::{
 			get_processor_count,
 		};

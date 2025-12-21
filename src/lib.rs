@@ -13,6 +13,7 @@
 #![feature(linkage)]
 #![feature(linked_list_cursors)]
 #![feature(maybe_uninit_as_bytes)]
+#![feature(type_alias_impl_trait)]
 #![feature(maybe_uninit_slice)]
 #![feature(never_type)]
 #![feature(slice_from_ptr_range)]
@@ -148,11 +149,11 @@ fn boot_processor_main() -> ! {
 	let bss_ptr = &raw mut __bss_start;
 	info!("BSS starts at {bss_ptr:p}");
 	info!("tls_info = {:#x?}", env::boot_info().load_info.tls_info);
-	arch::boot_processor_init();
+	Arch::boot_processor_init();
 
 	#[cfg(not(target_arch = "riscv64"))]
 	scheduler::add_current_core();
-	interrupts::enable();
+	Arch::enable();
 
 	arch::kernel::boot_next_processor();
 
@@ -188,7 +189,7 @@ fn application_processor_main() -> ! {
 	Arch::application_processor_init();
 	#[cfg(not(target_arch = "riscv64"))]
 	scheduler::add_current_core();
-	interrupts::enable();
+	Arch::enable();
 	arch::kernel::boot_next_processor();
 
 	debug!("Entering idle loop for application processor");

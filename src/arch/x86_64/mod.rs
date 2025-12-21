@@ -25,7 +25,30 @@ impl ArchTrait for Arch {
 		kernel::apic::wakeup_core(core_id_to_wakeup);
 	}
 
+	type SerialDevice = kernel::serial::SerialDevice;
 	fn application_processor_init() {
 		kernel::application_processor_init();
+	}
+
+	fn boot_processor_init() {
+		kernel::boot_processor_init();
+	}
+
+	fn enable_and_wait() {
+		kernel::interrupts::enable_and_wait();
+	}
+
+	fn install_handlers() {
+		kernel::interrupts::install_handlers();
+	}
+
+	#[inline]
+	fn enable() {
+		kernel::interrupts::enable();
+	}
+
+	#[inline]
+	fn disable() {
+		kernel::interrupts::disable();
 	}
 }

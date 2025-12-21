@@ -9,6 +9,8 @@ use alloc::collections::VecDeque;
 
 #[cfg(feature = "pci")]
 pub(crate) use pci_types::InterruptLine;
+
+use crate::{Arch, ArchTrait};
 #[cfg(not(feature = "pci"))]
 pub(crate) type InterruptLine = u8;
 
@@ -37,5 +39,5 @@ pub(crate) fn init() {
 	#[cfg(target_arch = "riscv64")]
 	crate::arch::riscv64::kernel::init_drivers();
 
-	crate::arch::interrupts::install_handlers();
+	Arch::install_handlers();
 }
