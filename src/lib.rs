@@ -185,7 +185,7 @@ fn boot_processor_main() -> ! {
 
 /// Entry Point of Hermit for an Application Processor
 fn application_processor_main() -> ! {
-	arch::application_processor_init();
+	Arch::application_processor_init();
 	#[cfg(not(target_arch = "riscv64"))]
 	scheduler::add_current_core();
 	interrupts::enable();

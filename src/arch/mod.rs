@@ -1,21 +1,28 @@
 //! Architecture-specific architecture abstraction.
 
+use crate::scheduler::CoreId;
+
+pub trait ArchTrait {
+	fn set_oneshot_timer(wakeup_time: Option<u64>);
+	fn wakeup_core(core_id_to_wakeup: CoreId);
+
+	fn application_processor_init();
+}
+
 cfg_if::cfg_if! {
 	if #[cfg(target_arch = "aarch64")] {
 		pub(crate) mod aarch64;
 		pub(crate) use self::aarch64::*;
+		pub(crate) use self::aarch64::Arch;
 
 		pub(crate) use self::aarch64::kernel::boot_processor_init;
 		pub(crate) use self::aarch64::kernel::core_local;
 		pub(crate) use self::aarch64::kernel::interrupts;
-		pub(crate) use self::aarch64::kernel::interrupts::wakeup_core;
 		#[cfg(feature = "pci")]
 		pub(crate) use self::aarch64::kernel::pci;
 		pub(crate) use self::aarch64::kernel::processor;
 		pub(crate) use self::aarch64::kernel::serial::SerialDevice;
-		pub(crate) use self::aarch64::kernel::processor::set_oneshot_timer;
 		pub(crate) use self::aarch64::kernel::scheduler;
-		pub(crate) use self::aarch64::kernel::application_processor_init;
 		pub(crate) use self::aarch64::kernel::{
 			get_processor_count,
 		};
@@ -23,12 +30,8 @@ cfg_if::cfg_if! {
 	} else if #[cfg(target_arch = "x86_64")] {
 		pub(crate) mod x86_64;
 		pub(crate) use self::x86_64::*;
+		pub(crate) use self::x86_64::Arch;
 
-		pub(crate) use self::x86_64::kernel::apic::{
-			set_oneshot_timer,
-			wakeup_core,
-		};
-		pub(crate) use self::x86_64::kernel::application_processor_init;
 		pub(crate) use self::x86_64::kernel::core_local;
 		pub(crate) use self::x86_64::kernel::gdt::set_current_kernel_stack;
 		pub(crate) use self::x86_64::kernel::interrupts;
@@ -47,10 +50,9 @@ cfg_if::cfg_if! {
 		pub(crate) mod riscv64;
 		pub(crate) use self::riscv64::*;
 
-		pub(crate) use self::riscv64::kernel::application_processor_init;
 		#[cfg(feature = "pci")]
 		pub(crate) use self::riscv64::kernel::pci;
-		pub(crate) use self::riscv64::kernel::processor::{self, set_oneshot_timer, wakeup_core};
+		pub(crate) use self::riscv64::kernel::processor::{self};
 		pub(crate) use self::riscv64::kernel::serial::SerialDevice;
 		pub(crate) use self::riscv64::kernel::{
 			boot_processor_init,

@@ -11,10 +11,10 @@ use core::{cmp, fmt};
 use memory_addresses::VirtAddr;
 
 use self::tls::Tls;
-use crate::arch;
 use crate::arch::core_local::*;
 use crate::arch::scheduler::TaskStacks;
 use crate::scheduler::CoreId;
+use crate::{Arch, ArchTrait, arch};
 
 /// Returns the most significant bit.
 ///
@@ -359,7 +359,7 @@ impl BlockedTaskQueue {
 		if let Some(wt) = wakeup_time {
 			let mut cursor = self.list.cursor_front_mut();
 			let set_oneshot_timer = || {
-				arch::set_oneshot_timer(wakeup_time);
+				Arch::set_oneshot_timer(wakeup_time);
 			};
 
 			while let Some(node) = cursor.current() {
@@ -395,7 +395,7 @@ impl BlockedTaskQueue {
 				// If this is the first task, adjust the One-Shot Timer to fire at the
 				// next task's wakeup time (if any).
 				if first_task {
-					arch::set_oneshot_timer(
+					Arch::set_oneshot_timer(
 						cursor
 							.current()
 							.map_or_else(|| None, |node| node.wakeup_time),
@@ -446,6 +446,6 @@ impl BlockedTaskQueue {
 			(Some(task_wt), Some(network_wt)) => Some(u64::min(task_wt, network_wt)),
 		};
 
-		arch::set_oneshot_timer(timer_wakeup_time);
+		Arch::set_oneshot_timer(timer_wakeup_time);
 	}
 }

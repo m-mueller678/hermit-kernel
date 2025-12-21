@@ -15,7 +15,6 @@ use hermit_sync::*;
 #[cfg(target_arch = "riscv64")]
 use riscv::register::sstatus;
 
-use crate::arch;
 use crate::arch::core_local::*;
 #[cfg(target_arch = "riscv64")]
 use crate::arch::switch::switch_to_task;
@@ -24,6 +23,7 @@ use crate::arch::switch::{switch_to_fpu_owner, switch_to_task};
 use crate::arch::{get_processor_count, interrupts};
 use crate::kernel::scheduler::TaskStacks;
 use crate::scheduler::task::*;
+use crate::{Arch, ArchTrait};
 
 pub mod task;
 
@@ -256,7 +256,7 @@ impl PerCoreScheduler {
 		debug!("Creating task {tid} with priority {prio} on core {core_id}");
 
 		if wakeup {
-			arch::wakeup_core(core_id);
+			Arch::wakeup_core(core_id);
 		}
 
 		tid
@@ -289,7 +289,7 @@ impl PerCoreScheduler {
 				.wakeup_tasks
 				.push_back(task);
 			// Wake up the CPU
-			arch::wakeup_core(task.get_core_id());
+			Arch::wakeup_core(task.get_core_id());
 		}
 	}
 
