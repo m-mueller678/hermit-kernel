@@ -71,4 +71,8 @@ impl ArchTrait for Arch {
 	fn detect_timestamp_frequency() -> Option<(u64, &'static str)> {
 		kernel::processor::detect_cpu_frequency()
 	}
+
+	fn get_entropy() -> Option<[u8; 32]> {
+		kernel::processor::seed_entropy()
+	}
 }

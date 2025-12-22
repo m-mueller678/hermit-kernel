@@ -2,9 +2,9 @@ use core::slice;
 
 use hermit_sync::TicketMutex;
 
-use crate::arch;
 use crate::entropy::{self, Flags};
 use crate::errno::Errno;
+use crate::{Arch, ArchTrait};
 
 static PARK_MILLER_LEHMER_SEED: TicketMutex<u32> = TicketMutex::new(0);
 const RAND_MAX: u64 = 0x7fff_ffff;
@@ -71,7 +71,7 @@ pub extern "C" fn sys_srand(seed: u32) {
 }
 
 pub(crate) fn init_entropy() {
-	let seed: u32 = arch::processor::get_timestamp() as u32;
+	let seed: u32 = Arch::get_timestamp() as u32;
 
 	*PARK_MILLER_LEHMER_SEED.lock() = seed;
 }

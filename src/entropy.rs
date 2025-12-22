@@ -7,9 +7,9 @@ use hermit_sync::InterruptTicketMutex;
 use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 
-use crate::arch::kernel::processor::seed_entropy;
 use crate::errno::Errno;
 use crate::time::cpu_timestamp_us;
+use crate::{Arch, ArchTrait};
 
 // Reseed every second for increased security while maintaining the performance of
 // the PRNG.
@@ -36,7 +36,7 @@ pub fn read(buf: &mut [u8], _flags: Flags) -> isize {
 	let pool = match pool {
 		Some(pool) if now.saturating_sub(pool.last_reseed) <= RESEED_INTERVAL => pool,
 		pool => {
-			if let Some(seed) = seed_entropy() {
+			if let Some(seed) = Arch::get_entropy() {
 				pool.insert(Pool {
 					rng: ChaCha20Rng::from_seed(seed),
 					last_reseed: now,

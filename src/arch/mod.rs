@@ -32,6 +32,8 @@ pub trait ArchTrait {
 	fn shutdown(code: i32) -> !;
 	fn get_timestamp() -> u64;
 	fn detect_timestamp_frequency() -> Option<(u64, &'static str)>;
+
+	fn get_entropy() -> Option<[u8; 32]>;
 }
 
 pub use arch_impl::Arch;
