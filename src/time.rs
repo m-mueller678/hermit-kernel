@@ -1,6 +1,7 @@
+use core::sync::atomic::{AtomicU32, Ordering};
 use core::time::Duration;
 
-use crate::arch;
+use crate::{Arch, ArchTrait, arch};
 
 #[allow(non_camel_case_types)]
 pub type time_t = i64;
@@ -109,4 +110,31 @@ impl From<SystemTime> for timespec {
 	fn from(value: SystemTime) -> Self {
 		value.0
 	}
+}
+
+static CPU_TIMESTAMP_FREQUENCY: AtomicU32 = AtomicU32::new(0);
+
+pub fn init_cpu_timestamp_frequency() {
+	let (cpu_frequency, source) =
+		Arch::detect_timestamp_frequency().unwrap_or((2_000_000_000, "Visionary"));
+	let mhz = (cpu_frequency + 500_000) / 1_000_000;
+	// We later divide by mhz and use zero as a sentinel value, so we cannot allow zero.
+	// Also, frequencies below 1MHz are almost certainly an error
+	assert!(mhz > 0);
+	assert!(CPU_TIMESTAMP_FREQUENCY.swap(mhz as u32, Ordering::Relaxed) == 0);
+	info!("Detected CPU frequency of {mhz} MHz from {source}");
+}
+
+/// Returns the cpu time stamp frequency in Mhz
+pub fn cpu_timestamp_frequency_mhz() -> u64 {
+	let x = CPU_TIMESTAMP_FREQUENCY.load(Ordering::Relaxed);
+	assert!(x != 0, "cpu timestamp frequency not initialized yet");
+	u64::from(x)
+}
+
+/// time since oot in microseconds
+pub fn cpu_timestamp_us() -> u64 {
+	// We simulate a timer with a 1 microsecond resolution by taking the CPU timestamp
+	// and dividing it by the CPU frequency in MHz.
+	Arch::get_timestamp() / cpu_timestamp_frequency_mhz()
 }

@@ -63,4 +63,12 @@ impl ArchTrait for Arch {
 	fn shutdown(code: i32) -> ! {
 		kernel::processor::shutdown(code)
 	}
+
+	fn get_timestamp() -> u64 {
+		kernel::processor::get_timestamp()
+	}
+
+	fn detect_timestamp_frequency() -> Option<(u64, &'static str)> {
+		kernel::processor::detect_cpu_frequency()
+	}
 }

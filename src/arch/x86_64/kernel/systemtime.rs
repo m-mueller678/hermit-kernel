@@ -4,7 +4,7 @@ use hermit_sync::{OnceCell, without_interrupts};
 use time::OffsetDateTime;
 use x86_64::instructions::port::Port;
 
-use crate::arch::x86_64::kernel::processor;
+use crate::time::cpu_timestamp_us;
 
 const CMOS_COMMAND: Port<u8> = Port::new(0x70);
 const CMOS_DATA: Port<u8> = Port::new(0x71);
@@ -178,7 +178,7 @@ pub fn init() {
 		// Get the current time in microseconds since the epoch (1970-01-01) from the x86 RTC.
 		// Subtract the timer ticks to get the actual time when Hermit was booted.
 		let current_time = without_interrupts(|| Rtc::new().get_microseconds_since_epoch());
-		let boot_time = current_time - processor::get_timer_ticks();
+		let boot_time = current_time - cpu_timestamp_us();
 		OffsetDateTime::from_unix_timestamp_nanos(i128::from(boot_time) * 1000).unwrap()
 	};
 	info!("Hermit booted on {boot_time}");
@@ -189,5 +189,5 @@ pub fn init() {
 
 /// Returns the current time in microseconds since UNIX epoch.
 pub fn now_micros() -> u64 {
-	*BOOT_TIME.get().unwrap() + super::processor::get_timer_ticks()
+	*BOOT_TIME.get().unwrap() + cpu_timestamp_us()
 }

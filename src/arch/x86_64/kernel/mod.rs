@@ -76,7 +76,7 @@ pub fn boot_processor_init() {
 	interrupts::load_idt();
 	pic::init();
 
-	processor::detect_frequency();
+	crate::time::init_cpu_timestamp_frequency();
 	crate::logging::KERNEL_LOGGER.set_time(true);
 	processor::print_information();
 	debug!("Cr0 = {:?}", Cr0::read());

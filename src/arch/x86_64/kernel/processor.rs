@@ -8,7 +8,6 @@ use core::arch::x86_64::{
 };
 use core::fmt;
 use core::hint::spin_loop;
-use core::num::NonZero;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use hermit_sync::Lazy;
@@ -28,6 +27,7 @@ use x86_64::{VirtAddr, instructions};
 use crate::arch::x86_64::kernel::acpi;
 use crate::arch::x86_64::kernel::{interrupts, pic, pit};
 use crate::env;
+use crate::time::cpu_timestamp_frequency_mhz;
 
 /// see <http://biosbits.org>.
 const MSR_PLATFORM_INFO: u32 = 0xce;
@@ -119,14 +119,6 @@ static FEATURES: Lazy<Features> = Lazy::new(|| {
 		xcr0_supports_avx512_zmm_hi16: extended_state_info.xcr0_supports_avx512_zmm_hi16(),
 		xcr0_supports_avx512_zmm_hi256: extended_state_info.xcr0_supports_avx512_zmm_hi256(),
 	}
-});
-
-static CPU_FREQUENCY: Lazy<CpuFrequency> = Lazy::new(|| {
-	let mut cpu_frequency = CpuFrequency::new();
-	unsafe {
-		cpu_frequency.detect();
-	}
-	cpu_frequency
 });
 
 #[repr(C, align(16))]
@@ -222,161 +214,53 @@ impl FPUState {
 	}
 }
 
-enum CpuFrequencySources {
-	Invalid,
-	CommandLine,
-	CpuIdBrandString,
-	Measurement,
-	Hypervisor,
-	CpuId,
-	CpuIdTscInfo,
-	HypervisorTscInfo,
-	Visionary,
-	Fdt,
-}
-
-impl fmt::Display for CpuFrequencySources {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match &self {
-			CpuFrequencySources::CommandLine => write!(f, "Command Line"),
-			CpuFrequencySources::CpuIdBrandString => write!(f, "CpuId Brand String"),
-			CpuFrequencySources::Measurement => write!(f, "Measurement"),
-			CpuFrequencySources::Hypervisor => write!(f, "Hypervisor"),
-			CpuFrequencySources::CpuId => write!(f, "CpuId"),
-			CpuFrequencySources::CpuIdTscInfo => write!(f, "CpuId Tsc Info"),
-			CpuFrequencySources::HypervisorTscInfo => write!(f, "Tsc Info from Hypervisor"),
-			CpuFrequencySources::Visionary => write!(f, "Visionary"),
-			CpuFrequencySources::Invalid => {
-				panic!("Attempted to print an invalid CPU Frequency Source")
-			}
-			CpuFrequencySources::Fdt => write!(f, "FDT"),
+pub fn detect_cpu_frequency() -> Option<(u64, &'static str)> {
+	fn detect_from_cmdline() -> Option<(u64, &'static str)> {
+		Some((u64::from(env::freq()?) * 1_000_000, "Command Line"))
+	}
+	fn detect_from_cpuid(cpuid: &CpuId<CpuIdReaderNative>) -> Option<(u64, &'static str)> {
+		let freq_info = cpuid.get_processor_frequency_info()?;
+		let mhz = freq_info.processor_base_frequency();
+		if mhz == 0 {
+			return None;
 		}
+		Some((u64::from(mhz) * 1_000_000, "CpuId"))
 	}
-}
-
-struct CpuFrequency {
-	mhz: u16,
-	source: CpuFrequencySources,
-}
-
-impl CpuFrequency {
-	const fn new() -> Self {
-		CpuFrequency {
-			mhz: 0,
-			source: CpuFrequencySources::Invalid,
-		}
+	fn detect_from_cpuid_tsc_info(cpuid: &CpuId<CpuIdReaderNative>) -> Option<(u64, &'static str)> {
+		let hz = cpuid.get_tsc_info()?.tsc_frequency()?;
+		Some((hz, "CpuId Tsc Info"))
 	}
-
-	fn set_detected_cpu_frequency(
-		&mut self,
-		mhz: u16,
-		source: CpuFrequencySources,
-	) -> Result<(), ()> {
-		//The clock frequency must never be set to zero, otherwise a division by zero will
-		//occur during runtime
-		if mhz > 0 {
-			self.mhz = mhz;
-			self.source = source;
-			Ok(())
-		} else {
-			Err(())
-		}
-	}
-
-	unsafe fn detect_from_cmdline(&mut self) -> Result<(), ()> {
-		let mhz = env::freq().ok_or(())?;
-		self.set_detected_cpu_frequency(mhz, CpuFrequencySources::CommandLine)
-	}
-
-	unsafe fn detect_from_cpuid(&mut self, cpuid: &CpuId<CpuIdReaderNative>) -> Result<(), ()> {
-		let processor_frequency_info = cpuid.get_processor_frequency_info();
-
-		match processor_frequency_info {
-			Some(freq_info) => {
-				let mhz = freq_info.processor_base_frequency();
-				self.set_detected_cpu_frequency(mhz, CpuFrequencySources::CpuId)
-			}
-			None => Err(()),
-		}
-	}
-
-	unsafe fn detect_from_cpuid_tsc_info(
-		&mut self,
+	fn detect_from_cpuid_brand_string(
 		cpuid: &CpuId<CpuIdReaderNative>,
-	) -> Result<(), ()> {
-		let tsc_info = cpuid.get_tsc_info().ok_or(())?;
-		let freq = tsc_info.tsc_frequency().ok_or(())?;
-		let mhz = (freq / 1_000_000u64) as u16;
-		self.set_detected_cpu_frequency(mhz, CpuFrequencySources::CpuIdTscInfo)
+	) -> Option<(u64, &'static str)> {
+		let processor_brand = cpuid.get_processor_brand_string()?;
+		let brand_string = processor_brand.as_str();
+		let ghz_unit_start = brand_string.find("GHz")?;
+		let number_str = brand_string[..ghz_unit_start]
+			.split_ascii_whitespace()
+			.last()?;
+		let decimal = number_str.find(".")?;
+		let full_ghz = number_str[..decimal].parse::<u64>().ok()?;
+		let past_decimal = &number_str[decimal + 1..];
+		let fractional_ghz = past_decimal.parse::<u64>().ok()?;
+		let frequency =
+			full_ghz * 10u64.pow(9) + fractional_ghz * 10u64.pow(9 - past_decimal.len() as u32);
+		Some((frequency, "CpuId Brand String"))
 	}
-
-	unsafe fn detect_from_cpuid_hypervisor_info(
-		&mut self,
+	fn detect_from_cpuid_hypervisor_info(
 		cpuid: &CpuId<CpuIdReaderNative>,
-	) -> Result<(), ()> {
-		const KHZ_TO_HZ: u64 = 1000;
-		const MHZ_TO_HZ: u64 = 1_000_000;
-		let hypervisor_info = cpuid.get_hypervisor_info().ok_or(())?;
-		let freq = u64::from(hypervisor_info.tsc_frequency().ok_or(())?) * KHZ_TO_HZ;
-		let mhz: u16 = (freq / MHZ_TO_HZ).try_into().unwrap();
-		self.set_detected_cpu_frequency(mhz, CpuFrequencySources::HypervisorTscInfo)
+	) -> Option<(u64, &'static str)> {
+		let khz = cpuid.get_hypervisor_info()?.tsc_frequency()?;
+		Some((u64::from(khz) * 1000, "Tsc Info from Hypervisor"))
 	}
-
-	unsafe fn detect_from_cpuid_brand_string(
-		&mut self,
-		cpuid: &CpuId<CpuIdReaderNative>,
-	) -> Result<(), ()> {
-		if let Some(processor_brand) = cpuid.get_processor_brand_string() {
-			let brand_string = processor_brand.as_str();
-			let ghz_find = brand_string.find("GHz");
-
-			if let Some(ghz_find) = ghz_find {
-				let index = ghz_find - 4;
-				let thousand_char = brand_string.chars().nth(index).unwrap();
-				let decimal_char = brand_string.chars().nth(index + 1).unwrap();
-				let hundred_char = brand_string.chars().nth(index + 2).unwrap();
-				let ten_char = brand_string.chars().nth(index + 3).unwrap();
-
-				if let (Some(thousand), '.', Some(hundred), Some(ten)) = (
-					thousand_char.to_digit(10),
-					decimal_char,
-					hundred_char.to_digit(10),
-					ten_char.to_digit(10),
-				) {
-					let mhz = (thousand * 1000 + hundred * 100 + ten * 10) as u16;
-					return self.set_detected_cpu_frequency(mhz, CpuFrequencySources::CpuIdTscInfo);
-				}
-			}
+	fn measure_frequency() -> Option<(u64, &'static str)> {
+		extern "x86-interrupt" fn measure_frequency_timer_handler(
+			_stack_frame: interrupts::ExceptionStackFrame,
+		) {
+			MEASUREMENT_TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+			pic::eoi(pit::PIT_INTERRUPT_NUMBER);
 		}
 
-		Err(())
-	}
-
-	fn detect_from_fdt(&mut self) -> Result<(), ()> {
-		fn mhz_from_fdt() -> Option<NonZero<u16>> {
-			let khz = env::fdt()?
-				.find_node("/hermit,tsc")?
-				.property("khz")?
-				.as_usize()?;
-			let khz = u32::try_from(khz).ok()?;
-			let mhz = u16::try_from(khz / 1000).ok()?;
-			NonZero::new(mhz)
-		}
-
-		let mhz = mhz_from_fdt().ok_or(())?;
-		self.set_detected_cpu_frequency(mhz.get(), CpuFrequencySources::Fdt)?;
-
-		Ok(())
-	}
-
-	extern "x86-interrupt" fn measure_frequency_timer_handler(
-		_stack_frame: interrupts::ExceptionStackFrame,
-	) {
-		MEASUREMENT_TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
-		pic::eoi(pit::PIT_INTERRUPT_NUMBER);
-	}
-
-	fn measure_frequency(&mut self) -> Result<(), ()> {
 		use crate::arch::x86_64::kernel::interrupts::IDT;
 
 		// Measure the CPU frequency by counting 3 ticks of a 100Hz timer.
@@ -388,7 +272,7 @@ impl CpuFrequency {
 		unsafe {
 			let mut idt = IDT.lock();
 			idt[pit::PIT_INTERRUPT_NUMBER]
-				.set_handler_fn(Self::measure_frequency_timer_handler)
+				.set_handler_fn(measure_frequency_timer_handler)
 				.set_stack_index(0);
 		}
 		pit::init(measurement_frequency);
@@ -406,19 +290,17 @@ impl CpuFrequency {
 		let start_tick = loop {
 			let tick = MEASUREMENT_TIMER_TICKS.load(Ordering::Relaxed);
 			if tick != first_tick {
-				break Some(tick);
+				break tick;
 			}
 
 			if get_timestamp() - start > 120_000_000 {
-				break None;
+				interrupts::disable();
+				pit::deinit();
+				return None;
 			}
 
 			spin_loop();
-		}
-		.ok_or_else(|| {
-			interrupts::disable();
-			pit::deinit();
-		})?;
+		};
 
 		// Count the number of CPU cycles during 3 timer ticks.
 		let start = get_timestamp();
@@ -444,39 +326,17 @@ impl CpuFrequency {
 
 		// Calculate the CPU frequency out of this measurement.
 		let cycle_count = end - start;
-		let mhz = (measurement_frequency * cycle_count / (1_000_000 * tick_count)) as u16;
-		self.set_detected_cpu_frequency(mhz, CpuFrequencySources::Measurement)
+		let hz = measurement_frequency * cycle_count / tick_count;
+		Some((hz, "Measurement"))
 	}
 
-	unsafe fn detect(&mut self) {
-		let cpuid = CpuId::new();
-		unsafe {
-			self.detect_from_fdt()
-				.or_else(|_e| self.detect_from_cpuid(&cpuid))
-				.or_else(|_e| self.detect_from_cpuid_tsc_info(&cpuid))
-				.or_else(|_e| self.detect_from_cpuid_hypervisor_info(&cpuid))
-				.or_else(|_e| self.detect_from_cmdline())
-				.or_else(|_e| self.detect_from_cpuid_brand_string(&cpuid))
-				.or_else(|_e| self.measure_frequency())
-				.or_else(|_e| {
-					warn!(
-						"Could not determine the processor frequency! Guess a frequency of 2Ghz!"
-					);
-					self.set_detected_cpu_frequency(2000, CpuFrequencySources::Visionary)
-				})
-				.unwrap();
-		}
-	}
-
-	fn get(&self) -> u16 {
-		self.mhz
-	}
-}
-
-impl fmt::Display for CpuFrequency {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{} MHz (from {})", self.mhz, self.source)
-	}
+	let cpuid = CpuId::new();
+	detect_from_cmdline()
+		.or_else(|| detect_from_cpuid_hypervisor_info(&cpuid))
+		.or_else(|| detect_from_cpuid_tsc_info(&cpuid))
+		.or_else(|| detect_from_cpuid(&cpuid))
+		.or_else(|| detect_from_cpuid_brand_string(&cpuid))
+		.or_else(|| measure_frequency())
 }
 
 struct CpuFeaturePrinter {
@@ -871,10 +731,6 @@ pub fn configure() {
 	FEATURES.cpu_speedstep.configure();
 }
 
-pub fn detect_frequency() {
-	Lazy::force(&CPU_FREQUENCY);
-}
-
 pub fn print_information() {
 	infoheader!(" CPU INFORMATION ");
 
@@ -885,7 +741,6 @@ pub fn print_information() {
 		infoentry!("Model", brand_string.as_str());
 	}
 
-	infoentry!("Frequency", *CPU_FREQUENCY);
 	infoentry!("SpeedStep Technology", FEATURES.cpu_speedstep);
 
 	infoentry!("Features", feature_printer);
@@ -1051,17 +906,6 @@ pub fn shutdown(error_code: i32) -> ! {
 	triple_fault()
 }
 
-pub fn get_timer_ticks() -> u64 {
-	// We simulate a timer with a 1 microsecond resolution by taking the CPU timestamp
-	// and dividing it by the CPU frequency in MHz.
-	get_timestamp() / u64::from(get_frequency())
-}
-
-/// Returns the timer frequency in MHz
-pub fn get_frequency() -> u16 {
-	CPU_FREQUENCY.get()
-}
-
 #[inline]
 pub fn readfs() -> usize {
 	let base = if cfg!(feature = "fsgsbase") {
@@ -1140,7 +984,7 @@ unsafe fn get_timestamp_rdtscp() -> u64 {
 /// Delay execution by the given number of microseconds using busy-waiting.
 #[inline]
 pub fn udelay(usecs: u64) {
-	let end = get_timestamp() + u64::from(get_frequency()) * usecs;
+	let end = get_timestamp() + cpu_timestamp_frequency_mhz() * usecs;
 	while get_timestamp() < end {
 		spin_loop();
 	}

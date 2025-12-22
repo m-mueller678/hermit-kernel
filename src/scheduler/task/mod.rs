@@ -14,6 +14,7 @@ use self::tls::Tls;
 use crate::arch::core_local::*;
 use crate::arch::scheduler::TaskStacks;
 use crate::scheduler::CoreId;
+use crate::time::cpu_timestamp_us;
 use crate::{Arch, ArchTrait, arch};
 
 /// Returns the most significant bit.
@@ -421,7 +422,7 @@ impl BlockedTaskQueue {
 	/// at least one task has elapsed.
 	pub fn handle_waiting_tasks(&mut self, ready_queue: &mut PriorityTaskQueue) {
 		// Get the current time.
-		let time = arch::processor::get_timer_ticks();
+		let time = cpu_timestamp_us();
 
 		// Get the wakeup time of this task and check if we have reached the first task
 		// that hasn't elapsed yet or waits indefinitely.

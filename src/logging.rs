@@ -4,6 +4,8 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use anstyle::AnsiColor;
 use log::{Level, LevelFilter, Metadata, Record};
 
+use crate::time::cpu_timestamp_us;
+
 pub static KERNEL_LOGGER: KernelLogger = KernelLogger::new();
 
 /// Data structure to filter kernel messages
@@ -44,7 +46,7 @@ impl log::Log for KernelLogger {
 		// FIXME: Use `super let` once stable
 		let time;
 		let format_time = if self.time() {
-			time = Microseconds(crate::processor::get_timer_ticks());
+			time = Microseconds(cpu_timestamp_us());
 			format_args!("[{time}]")
 		} else {
 			format_args!("[            ]")

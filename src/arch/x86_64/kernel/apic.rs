@@ -28,6 +28,7 @@ use crate::arch::x86_64::mm::paging::{
 use crate::config::*;
 use crate::mm::{PageAlloc, PageBox, PageRangeAllocator};
 use crate::scheduler::CoreId;
+use crate::time::{cpu_timestamp_frequency_mhz, cpu_timestamp_us};
 use crate::{arch, env};
 
 /// APIC Location and Status (R/W) See Table 35-2. See Section 10.4.4, Local APIC  Status and Location.
@@ -642,7 +643,7 @@ fn __set_oneshot_timer(wakeup_time: Option<u64>) {
 			// wt is the absolute wakeup time in microseconds based on processor::get_timer_ticks.
 			// We can simply multiply it by the processor frequency to get the absolute Time-Stamp Counter deadline
 			// (see processor::get_timer_ticks).
-			let tsc_deadline = wt * (u64::from(processor::get_frequency()));
+			let tsc_deadline = wt * cpu_timestamp_frequency_mhz();
 
 			// Enable the APIC Timer in TSC-Deadline Mode and let it start by writing to the respective MSR.
 			local_apic_write(
@@ -657,7 +658,7 @@ fn __set_oneshot_timer(wakeup_time: Option<u64>) {
 			// Calculate the relative timeout from the absolute wakeup time.
 			// Maintain a minimum value of one tick, otherwise the timer interrupt does not fire at all.
 			// The Timer Counter Register is also a 32-bit register, which we must not overflow for longer timeouts.
-			let current_time = processor::get_timer_ticks();
+			let current_time = cpu_timestamp_us();
 			let ticks = if wt > current_time {
 				wt - current_time
 			} else {

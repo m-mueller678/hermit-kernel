@@ -30,6 +30,8 @@ pub trait ArchTrait {
 	type PciConfigRegion: ConfigRegionAccess;
 
 	fn shutdown(code: i32) -> !;
+	fn get_timestamp() -> u64;
+	fn detect_timestamp_frequency() -> Option<(u64, &'static str)>;
 }
 
 pub use arch_impl::Arch;

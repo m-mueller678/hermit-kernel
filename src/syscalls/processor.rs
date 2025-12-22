@@ -1,4 +1,5 @@
 use crate::arch::get_processor_count;
+use crate::time::cpu_timestamp_frequency_mhz;
 
 /// Returns the number of processors currently online.
 #[hermit_macro::system]
@@ -17,5 +18,5 @@ pub extern "C" fn sys_available_parallelism() -> usize {
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_get_processor_frequency() -> u16 {
-	crate::arch::processor::get_frequency()
+	cpu_timestamp_frequency_mhz().try_into().unwrap()
 }
