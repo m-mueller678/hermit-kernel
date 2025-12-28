@@ -13,10 +13,7 @@ use x86_64::structures::paging::page_table::PageTableEntry;
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::{Size2MiB, Size4KiB};
 use crate::mm::physical_memory;
-use crate::{PageFlagsTrait, PageSize, PagingTrait};
-
-#[non_exhaustive]
-pub struct PagingInitToken {}
+use crate::{PageFlagsTrait, PageSize, PageTableEntryDebug, PagingTrait};
 
 fn entry_from_raw(x: u64) -> PageTableEntry {
 	unsafe { mem::transmute(x) }
@@ -28,7 +25,7 @@ fn node_from_address(addr: usize) -> &'static [AtomicU64; 512] {
 	unsafe { ptr::with_exposed_provenance::<[AtomicU64; 512]>(addr).as_ref_unchecked() }
 }
 
-fn to_child<'a>(node: &[AtomicU64; 512], index: usize) -> &[AtomicU64; 512] {
+fn to_child(node: &[AtomicU64; 512], index: usize) -> &[AtomicU64; 512] {
 	let entry = entry_from_raw(node[index].load(Relaxed));
 	let child_addr = entry.frame().unwrap().start_address().as_u64() as usize;
 	node_from_address(child_addr)
@@ -66,6 +63,8 @@ pub fn table_root_node() -> &'static [AtomicU64; 512] {
 
 unsafe impl PagingTrait for crate::x86_64::Arch {
 	unsafe fn init_paging() {
+		crate::mm::page_dump::dump_page_table_leaves();
+		crate::mm::page_dump::dump_page_table_hierarchical();
 		todo!();
 	}
 	type Flags = PageFlags;
@@ -161,6 +160,58 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		// This indicates a likely bug
 		debug_assert!(phys_addr != virtual_address);
 		phys_addr
+	}
+
+	fn walk_page_table_debug(
+		include_tracking_flags: bool,
+		callback: &mut dyn FnMut(&PageTableEntryDebug<'_>) -> bool,
+	) {
+		let flag_mask = if include_tracking_flags {
+			PageTableEntryFlags::all()
+		} else {
+			PageTableEntryFlags::all() - PageTableEntryFlags::DIRTY - PageTableEntryFlags::ACCESSED
+		};
+
+		fn dump(
+			virtual_address: usize,
+			entry_size: usize,
+			depth: usize,
+			node: &[AtomicU64; 512],
+			callback: &mut dyn FnMut(&PageTableEntryDebug<'_>) -> bool,
+			flag_mask: PageTableEntryFlags,
+		) {
+			for (index, x) in node.iter().enumerate() {
+				let entry = entry_from_raw(x.load(Relaxed));
+				let flags = entry.flags() & flag_mask;
+				let is_present = flags.contains(PageTableEntryFlags::PRESENT);
+				let has_children = is_present
+					&& !flags.contains(PageTableEntryFlags::HUGE_PAGE)
+					&& entry_size > Size4KiB::size();
+				let visit_children = callback(&PageTableEntryDebug {
+					physical_addr: entry.addr().as_u64() as usize,
+					virtual_addr: virtual_address + entry_size * index,
+					size: entry_size,
+					flags: flags.bits(),
+					flags_debug: &flags,
+					depth,
+					has_children,
+					is_present,
+				});
+
+				if visit_children {
+					assert!(has_children);
+					dump(
+						virtual_address + entry_size * index,
+						entry_size >> 9,
+						depth + 1,
+						to_child(node, index),
+						callback,
+						flag_mask,
+					);
+				}
+			}
+		}
+		dump(0, 1 << 39, 0, table_root_node(), callback, flag_mask);
 	}
 }
 

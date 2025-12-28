@@ -13,6 +13,7 @@
 #![feature(linkage)]
 #![feature(linked_list_cursors)]
 #![feature(maybe_uninit_as_bytes)]
+#![feature(core_io_borrowed_buf)]
 #![feature(type_alias_impl_trait)]
 #![feature(maybe_uninit_slice)]
 #![feature(never_type)]

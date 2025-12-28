@@ -1,4 +1,4 @@
-use core::fmt;
+use core::fmt::{self, Display};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use anstyle::AnsiColor;
@@ -160,4 +160,15 @@ macro_rules! infofooter {
 		::log::info!("{:=^70}", '=');
 		::log::info!("");
 	}};
+}
+
+pub fn format_binary_si_bytes(x: usize) -> impl core::fmt::Display {
+	core::fmt::from_fn(move |f| {
+		let suffix = ["B  ", "KiB", "MiB", "GiB", "TiB"];
+		let suffix_index = (x.ilog2() / 10).min(suffix.len() as u32 - 1);
+		let suffix = suffix[suffix_index as usize];
+		let x = x >> (suffix_index * 10);
+		core::fmt::Display::fmt(&x, f)?;
+		f.write_str(suffix)
+	})
 }

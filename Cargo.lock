@@ -125,6 +125,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -628,6 +634,7 @@ dependencies = [
  "anyhow",
  "arm-gic",
  "arm-pl011-uart",
+ "arrayvec",
  "bit_field",
  "bitflags 2.10.0",
  "build-time",

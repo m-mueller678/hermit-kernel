@@ -65,6 +65,25 @@ pub unsafe trait PagingTrait {
 	/// virtual_address must be an unmapped page os size S currently configured for size S
 	unsafe fn map<S: PageSize>(virtual_address: usize, physical_address: usize, flags: Self::Flags);
 	unsafe fn unmap<S: PageSize>(virtual_address: usize) -> usize;
+	fn walk_page_table_debug(
+		include_tracking_flags: bool,
+		callback: &mut dyn FnMut(&PageTableEntryDebug<'_>) -> bool,
+	);
+}
+
+pub struct PageTableEntryDebug<'a> {
+	pub physical_addr: usize,
+	pub virtual_addr: usize,
+	pub size: usize,
+	pub depth: usize,
+	pub has_children: bool,
+	pub is_present: bool,
+	pub flags: u64,
+	pub flags_debug: &'a dyn core::fmt::Debug,
+}
+
+pub trait PageTableVisitor {
+	fn page_entry(&mut self) -> bool;
 }
 
 pub trait PageSize: arch_impl::ArchPageSize {

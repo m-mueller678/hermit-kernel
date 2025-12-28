@@ -47,6 +47,7 @@ use talc::{ErrOnOom, Talc, Talck};
 
 use crate::{Arch, PageFlags, PageSize, PagingTrait};
 
+pub mod page_dump;
 pub mod physical_memory;
 pub mod virtual_memory;
 
