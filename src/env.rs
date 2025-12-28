@@ -12,12 +12,22 @@ use hashbrown::hash_map::Iter;
 use hermit_entry::boot_info::{BootInfo, RawBootInfo};
 use hermit_sync::OnceCell;
 
-pub(crate) use crate::arch::kernel::{self, get_base_address, get_image_size, get_ram_address};
+use crate::{Arch, ArchTrait};
 
 static BOOT_INFO: OnceCell<BootInfo> = OnceCell::new();
 
 pub fn boot_info() -> &'static BootInfo {
 	BOOT_INFO.get().unwrap()
+}
+
+/// Virtual address the kernel image starts at
+pub fn get_base_address() -> usize {
+	boot_info()
+		.load_info
+		.kernel_image_addr_range
+		.start
+		.try_into()
+		.unwrap()
 }
 
 pub fn set_boot_info(raw_boot_info: RawBootInfo) {
@@ -54,18 +64,6 @@ pub fn fdt() -> Option<Fdt<'static>> {
 	})
 }
 
-/// Returns the RSDP physical address if available.
-#[cfg(all(target_arch = "x86_64", feature = "acpi"))]
-pub fn rsdp() -> Option<core::num::NonZero<usize>> {
-	let rsdp = fdt()?
-		.find_node("/hermit,rsdp")?
-		.reg()?
-		.next()?
-		.starting_address
-		.addr();
-	core::num::NonZero::new(rsdp)
-}
-
 pub fn fdt_args() -> Option<&'static str> {
 	fdt().and_then(|fdt| fdt.chosen().bootargs())
 }
@@ -79,7 +77,7 @@ impl Default for Cli {
 			RandomState::with_seeds(0, 0, 0, 0),
 		);
 
-		let args = kernel::args().or_else(fdt_args).unwrap_or_default();
+		let args = Arch::args().or_else(fdt_args).unwrap_or_default();
 		info!("bootargs = {args}");
 		let words = shell_words::split(args).unwrap();
 

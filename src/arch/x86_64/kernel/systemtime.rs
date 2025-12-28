@@ -187,7 +187,6 @@ pub fn init() {
 	BOOT_TIME.set(micros).unwrap();
 }
 
-/// Returns the current time in microseconds since UNIX epoch.
-pub fn now_micros() -> u64 {
-	*BOOT_TIME.get().unwrap() + cpu_timestamp_us()
+pub fn timestamp_unix_offset() -> u64 {
+	*BOOT_TIME.get().unwrap()
 }

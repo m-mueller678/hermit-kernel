@@ -60,7 +60,6 @@ struct Features {
 	supports_avx: bool,
 	supports_rdseed: bool,
 	supports_tsc_deadline: bool,
-	supports_x2apic: bool,
 	supports_xsave: bool,
 	supports_mwait: bool,
 	supports_clflush: bool,
@@ -94,6 +93,7 @@ static FEATURES: Lazy<Features> = Lazy::new(|| {
 		.get_extended_state_info()
 		.expect("CPUID Extended state info not available");
 
+	assert!(feature_info.has_x2apic());
 	Features {
 		physical_address_bits: processor_capacity_info.physical_address_bits(),
 		linear_address_bits: processor_capacity_info.linear_address_bits(),
@@ -101,7 +101,6 @@ static FEATURES: Lazy<Features> = Lazy::new(|| {
 		supports_avx: feature_info.has_avx(),
 		supports_rdseed: extended_feature_info.has_rdseed(),
 		supports_tsc_deadline: feature_info.has_tsc_deadline(),
-		supports_x2apic: feature_info.has_x2apic(),
 		supports_xsave: feature_info.has_xsave(),
 		supports_mwait: feature_info.has_monitor_mwait(),
 		supports_clflush: feature_info.has_clflush(),
@@ -810,11 +809,6 @@ pub fn supports_avx() -> bool {
 #[inline]
 pub fn supports_tsc_deadline() -> bool {
 	FEATURES.supports_tsc_deadline
-}
-
-#[inline]
-pub fn supports_x2apic() -> bool {
-	FEATURES.supports_x2apic
 }
 
 #[inline]

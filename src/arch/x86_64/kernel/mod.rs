@@ -2,7 +2,7 @@ use core::ptr;
 use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
 
 use hermit_entry::boot_info::{PlatformInfo, RawBootInfo};
-use memory_addresses::{PhysAddr, VirtAddr};
+use memory_addresses::PhysAddr;
 use x86_64::registers::control::{Cr0, Cr4};
 
 use crate::arch::x86_64::kernel::core_local::*;
@@ -33,17 +33,9 @@ pub fn get_ram_address() -> PhysAddr {
 	PhysAddr::new(env::boot_info().hardware_info.phys_addr_range.start)
 }
 
-pub fn get_base_address() -> VirtAddr {
-	VirtAddr::new(env::boot_info().load_info.kernel_image_addr_range.start)
-}
-
 pub fn get_image_size() -> usize {
 	let range = &env::boot_info().load_info.kernel_image_addr_range;
 	(range.end - range.start) as usize
-}
-
-pub fn get_possible_cpus() -> u32 {
-	apic::local_apic_id_count()
 }
 
 pub fn get_processor_count() -> u32 {
@@ -69,7 +61,6 @@ pub fn boot_processor_init() {
 	}
 
 	crate::mm::init();
-	crate::mm::print_information();
 	CoreLocal::get().add_irq_counter();
 	env::init();
 	gdt::add_current_core();
@@ -99,9 +90,7 @@ pub fn application_processor_init() {
 	processor::configure();
 	gdt::add_current_core();
 	interrupts::load_idt();
-	if processor::supports_x2apic() {
-		apic::init_x2apic();
-	}
+	apic::init_x2apic();
 	apic::init_local_apic();
 	debug!("Cr0 = {:?}", Cr0::read());
 	debug!("Cr4 = {:?}", Cr4::read());

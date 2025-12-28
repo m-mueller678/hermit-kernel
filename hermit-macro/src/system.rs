@@ -179,7 +179,7 @@ fn emit_func(func: ItemFn, sig: &ParsedSig, errno: bool) -> Result<ItemFn> {
 					feature = "kernel-stack",
 					not(target_arch = "riscv64"),
 				))] {
-					unsafe { crate::arch::kernel::kernel_stack::#kernel_function_ident(#(#args,)* #kernel_ident) }
+					 unsafe { crate::arch::kernel::kernel_stack::#kernel_function_ident(#(#args,)* #kernel_ident) }
 				} else {
 					#unsafety { #kernel_ident(#(#args),*) }
 				}

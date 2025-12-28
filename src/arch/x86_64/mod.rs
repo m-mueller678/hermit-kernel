@@ -1,8 +1,8 @@
-use crate::ArchTrait;
-use crate::scheduler::CoreId;
-
 pub mod kernel;
-pub mod mm;
+mod paging;
+
+use crate::scheduler::CoreId;
+use crate::{ArchTrait, PageSize};
 
 /// Force strict CPU ordering, serializes load and store operations.
 #[allow(dead_code)]
@@ -75,4 +75,46 @@ impl ArchTrait for Arch {
 	fn get_entropy() -> Option<[u8; 32]> {
 		kernel::processor::seed_entropy()
 	}
+
+	fn args() -> Option<&'static str> {
+		kernel::args()
+	}
+
+	fn get_possible_cpus() -> u32 {
+		kernel::apic::local_apic_id_count()
+	}
+
+	fn boot_next_processor() {
+		kernel::boot_next_processor();
+	}
+
+	type DevicePageSize = Size4KiB;
+	type HeapPageSize = Size4KiB;
+	type IdentityPageSize = Size2MiB;
+	type MinPageSize = Size4KiB;
+
+	fn timestamp_unix_offset() -> u64 {
+		kernel::systemtime::timestamp_unix_offset()
+	}
+
+	fn print_statistics() {
+		kernel::print_statistics();
+	}
 }
+
+pub trait ArchPageSize {}
+
+macro_rules! define_page_size {
+	($Name:ident,$size:expr) => {
+		pub struct $Name;
+		impl PageSize for $Name {
+			fn size() -> usize {
+				$size
+			}
+		}
+		impl ArchPageSize for $Name {}
+	};
+}
+
+define_page_size!(Size4KiB, 1 << 12);
+define_page_size!(Size2MiB, 1 << 21);

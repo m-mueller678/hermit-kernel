@@ -21,8 +21,8 @@ use crate::arch::get_processor_count;
 use crate::arch::switch::switch_to_task;
 #[cfg(target_arch = "x86_64")]
 use crate::arch::switch::{switch_to_fpu_owner, switch_to_task};
-use crate::kernel::scheduler::TaskStacks;
 use crate::scheduler::task::*;
+use crate::x86_64::kernel::scheduler::TaskStacks;
 use crate::{Arch, ArchTrait};
 
 pub mod task;

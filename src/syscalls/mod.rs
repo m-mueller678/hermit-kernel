@@ -7,6 +7,7 @@ pub use self::processor::*;
 pub use self::tasks::*;
 use crate::mm::ALLOCATOR;
 use crate::syscalls::interfaces::Generic;
+use crate::{Arch, ArchTrait};
 
 mod entropy;
 pub(crate) mod interfaces;
@@ -179,13 +180,15 @@ pub(crate) fn get_application_parameters() -> (i32, *const *const u8, *const *co
 
 pub(crate) fn shutdown(arg: i32) -> ! {
 	// print some performance statistics
-	crate::arch::kernel::print_statistics();
-
+	Arch::print_statistics();
 	SYS.shutdown(arg)
 }
 
 #[hermit_macro::system]
 #[unsafe(no_mangle)]
 pub extern "C" fn sys_image_start_addr() -> usize {
-	crate::mm::kernel_start_address().as_usize()
+	crate::env::boot_info()
+		.load_info
+		.kernel_image_addr_range
+		.start as usize
 }

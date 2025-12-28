@@ -657,6 +657,7 @@ dependencies = [
  "raw-cpuid 11.6.0",
  "riscv",
  "sbi-rt",
+ "scopeguard",
  "semihosting",
  "shell-words",
  "smallvec",

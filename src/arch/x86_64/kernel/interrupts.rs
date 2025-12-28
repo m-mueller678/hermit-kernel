@@ -14,7 +14,7 @@ pub use x86_64::structures::idt::InterruptStackFrame as ExceptionStackFrame;
 
 use crate::arch::x86_64::kernel::core_local::{core_scheduler, increment_irq_counter};
 use crate::arch::x86_64::kernel::{apic, processor};
-use crate::arch::x86_64::mm::paging::{BasePageSize, PageSize, page_fault_handler};
+use crate::arch::x86_64::paging::page_fault_handler;
 use crate::drivers::InterruptHandlerQueue;
 #[cfg(not(feature = "pci"))]
 use crate::drivers::mmio::get_interrupt_handlers;
@@ -27,7 +27,7 @@ static IRQ_NAMES: InterruptTicketMutex<HashMap<u8, &'static str, RandomState>> =
 	InterruptTicketMutex::new(HashMap::with_hasher(RandomState::with_seeds(0, 0, 0, 0)));
 
 pub(crate) const IST_ENTRIES: usize = 4;
-pub(crate) const IST_SIZE: usize = 8 * BasePageSize::SIZE as usize;
+pub(crate) const IST_SIZE: usize = 1 << 15;
 
 pub(crate) static IDT: InterruptSpinMutex<InterruptDescriptorTable> =
 	InterruptSpinMutex::new(InterruptDescriptorTable::new());
@@ -166,7 +166,7 @@ pub(crate) fn install_handlers() {
 fn handle_interrupt(_stack_frame: ExceptionStackFrame, index: u8, _error_code: Option<u64>) {
 	debug!("received interrupt {index}");
 
-	use crate::arch::kernel::core_local::core_scheduler;
+	use crate::arch::x86_64::kernel::core_local::core_scheduler;
 	use crate::scheduler::PerCoreSchedulerExt;
 
 	if let Some(handlers) = IRQ_HANDLERS.get()

@@ -127,15 +127,10 @@ fn scan_bus(bus_range: impl IntoIterator<Item = u8> + Debug, pci_config: PciConf
 mod pcie {
 	use core::{ptr, slice};
 
-	use memory_addresses::{PhysAddr, VirtAddr};
 	use pci_types::{ConfigRegionAccess, PciAddress};
 
 	use super::PciConfigRegion;
-	use crate::arch::mm::paging::{
-		self, LargePageSize, PageTableEntryFlags, PageTableEntryFlagsExt,
-	};
-	use crate::env::kernel::acpi;
-	use crate::mm::device_alloc::DeviceAlloc;
+	use crate::arch::x86_64::kernel::acpi;
 
 	pub fn init_pcie() -> bool {
 		let Some(table) = acpi::get_mcfg_table() else {
@@ -160,7 +155,7 @@ mod pcie {
 	#[derive(Clone, Copy, Debug)]
 	#[repr(C, packed)]
 	pub struct McfgEntry {
-		pub base_address: u64,
+		pub base_address: usize,
 		pub pci_segment_group: u16,
 		pub bus_number_start: u8,
 		pub bus_number_end: u8,
@@ -173,13 +168,14 @@ mod pcie {
 			bus_number: u8,
 			device: u8,
 			function: u8,
-		) -> PhysAddr {
-			PhysAddr::new(
-				self.base_address
-					+ ((u64::from(bus_number) << 20)
-						| ((u64::from(device) & 0x1f) << 15)
-						| ((u64::from(function) & 0x7) << 12)),
-			)
+		) -> *mut u32 {
+			unsafe {
+				ptr::with_exposed_provenance_mut::<u32>(self.base_address).byte_add(
+					(usize::from(bus_number) << 20)
+						| ((usize::from(device) & 0x1f) << 15)
+						| ((usize::from(function) & 0x7) << 12),
+				)
+			}
 		}
 	}
 
@@ -189,12 +185,11 @@ mod pcie {
 			assert!(address.bus() >= self.bus_number_start);
 			assert!(address.bus() <= self.bus_number_end);
 
-			let phys_addr =
+			unsafe {
 				self.pci_config_space_address(address.bus(), address.device(), address.function())
-					+ u64::from(offset);
-			let ptr = DeviceAlloc.ptr_from::<u32>(phys_addr);
-
-			unsafe { ptr.read_volatile() }
+					.byte_add(usize::from(offset))
+					.read_volatile()
+			}
 		}
 
 		unsafe fn write(&self, address: PciAddress, offset: u16, value: u32) {
@@ -202,35 +197,15 @@ mod pcie {
 			assert!(address.bus() >= self.bus_number_start);
 			assert!(address.bus() <= self.bus_number_end);
 
-			let phys_addr =
-				self.pci_config_space_address(address.bus(), address.device(), address.function())
-					+ u64::from(offset);
-			let ptr = DeviceAlloc.ptr_from::<u32>(phys_addr);
-
 			unsafe {
-				ptr.write_volatile(value);
+				self.pci_config_space_address(address.bus(), address.device(), address.function())
+					.byte_add(usize::from(offset))
+					.write_volatile(value);
 			}
 		}
 	}
 
 	fn init_pcie_bus(bus_entry: &McfgEntry) {
-		let phys_addr = PhysAddr::new(bus_entry.base_address);
-		let virt_addr = VirtAddr::from_ptr(DeviceAlloc.ptr_from::<()>(phys_addr));
-		if paging::virtual_to_physical(virt_addr) != Some(phys_addr) {
-			debug!("Mapping PCIe memory");
-			let flags = {
-				let mut flags = PageTableEntryFlags::empty();
-				flags.normal().writable().execute_disable();
-				flags
-			};
-			paging::map::<LargePageSize>(
-				virt_addr,
-				phys_addr,
-				usize::from(bus_entry.bus_number_end) + 1,
-				flags,
-			);
-		}
-
 		super::scan_bus(
 			bus_entry.bus_number_start..=bus_entry.bus_number_end,
 			PciConfigRegion::PciE(*bus_entry),

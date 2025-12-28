@@ -1,29 +1,27 @@
+use core::mem::ManuallyDrop;
+use core::num::NonZeroUsize;
+use core::ptr::NonNull;
 use core::{mem, ptr, slice, str};
 
 use align_address::Align;
-use free_list::{PageLayout, PageRange};
 use hermit_sync::OnceCell;
-use memory_addresses::{PhysAddr, VirtAddr};
 use x86_64::instructions::port::Port;
-use x86_64::structures::paging::PhysFrame;
 
-use crate::arch::x86_64::mm::paging;
-use crate::arch::x86_64::mm::paging::{
-	BasePageSize, PageSize, PageTableEntryFlags, PageTableEntryFlagsExt,
-};
-use crate::env;
-use crate::mm::{PageAlloc, PageRangeAllocator};
+use crate::arch::PageFlagsTrait;
+use crate::arch::x86_64::Size4KiB;
+use crate::mm::{self, virtual_memory};
+use crate::{PageFlags, PageSize, env};
 
 /// Memory at this physical address is supposed to contain a pointer to the Extended BIOS Data Area (EBDA).
-const EBDA_PTR_LOCATION: PhysAddr = PhysAddr::new(0x0000_040e);
+const EBDA_PTR_LOCATION: usize = 0x0000_040e;
 /// Minimum physical address where a valid EBDA must be located.
-const EBDA_MINIMUM_ADDRESS: PhysAddr = PhysAddr::new(0x400);
+const EBDA_MINIMUM_ADDRESS: usize = 0x400;
 /// The size of the EBDA window that is searched for an ACPI RSDP.
 const EBDA_WINDOW_SIZE: usize = 1024;
 /// The lower bound of the other address range, where the ACPI RSDP could be located.
-const RSDP_SEARCH_ADDRESS_LOW: PhysAddr = PhysAddr::new(0xe_0000);
+const RSDP_SEARCH_ADDRESS_LOW: usize = 0xe_0000;
 /// The upper bound of the other address range, where the ACPI RSDP could be located.
-const RSDP_SEARCH_ADDRESS_HIGH: PhysAddr = PhysAddr::new(0xf_ffff);
+const RSDP_SEARCH_ADDRESS_HIGH: usize = 0xf_ffff;
 /// Length in bytes of the structure, over which the basic (ACPI 1.0) checksum is calculated.
 const RSDP_CHECKSUM_LENGTH: usize = 20;
 /// Length in byte sof the structure, over which the extended (ACPI 2.0+) checksum is calculated.
@@ -44,11 +42,11 @@ const AML_BYTEPREFIX: u8 = 0x0a;
 const SLP_EN: u16 = 1 << 13;
 
 /// The "Multiple APIC Description Table" (MADT) preserved for get_apic_table().
-static MADT: OnceCell<AcpiTable<'_>> = OnceCell::new();
+static MADT: OnceCell<AcpiTable> = OnceCell::new();
 
 /// The MCFG table, to address PCIe configuration space
 #[cfg(feature = "pci")]
-static MCFG: OnceCell<AcpiTable<'_>> = OnceCell::new();
+static MCFG: OnceCell<AcpiTable> = OnceCell::new();
 
 /// The PM1A Control I/O Port for powering off the computer through ACPI.
 static PM1A_CNT_BLK: OnceCell<Port<u16>> = OnceCell::new();
@@ -99,81 +97,83 @@ impl AcpiSdtHeader {
 /// A convenience structure to work with an ACPI table.
 /// Maps a single table to memory and frees the memory when a variable of this structure goes out of scope.
 #[derive(Debug)]
-pub struct AcpiTable<'a> {
-	header: &'a AcpiSdtHeader,
-	allocated_virtual_address: VirtAddr,
-	allocated_length: usize,
+pub struct AcpiTable {
+	header: NonNull<AcpiSdtHeader>,
 }
 
-impl AcpiTable<'_> {
-	fn map(physical_address: PhysAddr) -> Self {
+unsafe impl Send for AcpiTable {}
+unsafe impl Sync for AcpiTable {}
+
+impl AcpiTable {
+	fn header_ref(&self) -> &AcpiSdtHeader {
+		unsafe { self.header.as_ref() }
+	}
+	unsafe fn unmap_and_deallocate(&self, page_count: NonZeroUsize) {
+		let page = self.header.addr().get().align_down(Size4KiB::size());
+		let page = NonZeroUsize::new(page).unwrap();
+		unsafe {
+			mm::unmap_contiguous::<Size4KiB>(page, page_count);
+			virtual_memory::deallocate::<Size4KiB>(page, page_count);
+		}
+	}
+	fn page_count(&self) -> NonZeroUsize {
+		NonZeroUsize::new(
+			(self.header.addr().get() % Size4KiB::size() + self.header_ref().length as usize)
+				.div_ceil(Size4KiB::size()),
+		)
+		.unwrap()
+	}
+
+	unsafe fn map(physical_address: usize) -> Self {
 		if env::is_uefi() {
 			// For UEFI Systems, the tables are already mapped so we only need to return a proper reference to the table
-			let allocated_virtual_address = VirtAddr::new(physical_address.as_u64());
-			let header = unsafe {
-				allocated_virtual_address
-					.as_ptr::<AcpiSdtHeader>()
-					.as_ref()
-					.unwrap()
-			};
-			let allocated_length = usize::try_from(header.length).unwrap();
-
+			let header = ptr::with_exposed_provenance_mut::<AcpiSdtHeader>(physical_address);
 			return Self {
-				header,
-				allocated_virtual_address,
-				allocated_length,
+				header: NonNull::new(header).unwrap(),
 			};
 		}
 
-		let mut flags = PageTableEntryFlags::empty();
-		flags.normal().read_only().execute_disable();
+		let physical_map_address = physical_address.align_down(Size4KiB::size());
 
-		// Allocate two 4 KiB pages for the table and map it.
-		// This guarantees that we can access at least the "length" field of the table header when its physical address
-		// crosses a page boundary.
-		let mut allocated_length = 2 * BasePageSize::SIZE as usize;
-		let mut count = allocated_length / BasePageSize::SIZE as usize;
-
-		let physical_map_address = physical_address.align_down(BasePageSize::SIZE);
-		let offset = (physical_address - physical_map_address) as usize;
-		let layout = PageLayout::from_size(allocated_length).unwrap();
-		let page_range = PageAlloc::allocate(layout).unwrap();
-		let mut virtual_address = VirtAddr::from(page_range.start());
-		paging::map::<BasePageSize>(virtual_address, physical_map_address, count, flags);
-
-		// Get a pointer to the header and query the table length.
-		let mut header_ptr: *const AcpiSdtHeader = (virtual_address + offset).as_ptr();
-		let table_length = unsafe { (*header_ptr).length } as usize;
-
-		// Remap if the length exceeds what we've allocated.
-		if table_length > allocated_length - offset {
-			let range =
-				PageRange::from_start_len(virtual_address.as_usize(), allocated_length).unwrap();
+		// Allocate enough space to access the header.
+		let frame_past_header =
+			(physical_address + size_of::<AcpiSdtHeader>()).align_up(Size4KiB::size());
+		let mut page_count =
+			NonZeroUsize::new((frame_past_header - physical_map_address) / Size4KiB::size())
+				.unwrap();
+		loop {
+			let offset = (physical_address - physical_map_address) as usize;
+			let virtual_page_addr = virtual_memory::allocate::<Size4KiB>(page_count).unwrap();
 			unsafe {
-				PageAlloc::deallocate(range);
+				// TODO shouldn't this be already identity mapped?
+				mm::map_contiguous::<Size4KiB>(
+					virtual_page_addr,
+					physical_map_address,
+					page_count,
+					PageFlags::normal(),
+				)
+			};
+
+			// Get a pointer to the header and query the table length.
+			let header_ptr: *mut AcpiSdtHeader =
+				ptr::with_exposed_provenance_mut(virtual_page_addr.get() + offset);
+			let ret = ManuallyDrop::new(Self {
+				header: NonNull::new(header_ptr).unwrap(),
+			});
+			let real_page_count = ret.page_count();
+			if real_page_count == page_count {
+				return ManuallyDrop::into_inner(ret);
+			} else {
+				unsafe {
+					ret.unmap_and_deallocate(page_count);
+					page_count = real_page_count;
+				}
 			}
-
-			allocated_length = (table_length + offset).align_up(BasePageSize::SIZE as usize);
-			count = allocated_length / BasePageSize::SIZE as usize;
-
-			let layout = PageLayout::from_size(allocated_length).unwrap();
-			let page_range = PageAlloc::allocate(layout).unwrap();
-			virtual_address = VirtAddr::from(page_range.start());
-			paging::map::<BasePageSize>(virtual_address, physical_map_address, count, flags);
-
-			header_ptr = (virtual_address + offset).as_ptr();
-		}
-
-		// Return the table.
-		Self {
-			header: unsafe { &*header_ptr },
-			allocated_virtual_address: virtual_address,
-			allocated_length,
 		}
 	}
 
 	pub fn header_start_address(&self) -> usize {
-		ptr::from_ref(self.header).addr()
+		self.header.addr().get()
 	}
 
 	pub fn table_start_address(&self) -> usize {
@@ -181,21 +181,14 @@ impl AcpiTable<'_> {
 	}
 
 	pub fn table_end_address(&self) -> usize {
-		self.header_start_address() + self.header.length as usize
+		self.header_start_address() + self.header_ref().length as usize
 	}
 }
 
-impl Drop for AcpiTable<'_> {
+impl Drop for AcpiTable {
 	fn drop(&mut self) {
 		if !env::is_uefi() {
-			let range = PageRange::from_start_len(
-				self.allocated_virtual_address.as_usize(),
-				self.allocated_length,
-			)
-			.unwrap();
-			unsafe {
-				PageAlloc::deallocate(range);
-			}
+			unsafe { self.unmap_and_deallocate(self.page_count()) };
 		}
 	}
 }
@@ -291,22 +284,10 @@ fn verify_checksum(start_address: usize, length: usize) -> Result<(), ()> {
 
 /// Tries to find the ACPI RSDP within the specified address range.
 /// Returns a reference to it within the Ok() if successful or an empty Err() on failure.
-fn detect_rsdp(start_address: PhysAddr, end_address: PhysAddr) -> Result<&'static AcpiRsdp, ()> {
-	// Trigger page mapping in the first iteration!
-	let mut current_page = 0;
-
+/// Addresses are identity mapped physical memory.
+fn detect_rsdp(start_address: usize, end_address: usize) -> Result<&'static AcpiRsdp, ()> {
 	// Look for the ACPI RSDP in all possible 16-byte aligned addresses within this range.
-	for current_address in (start_address.as_usize()..end_address.as_usize()).step_by(16) {
-		// Have we crossed a page boundary in the last iteration?
-		if current_address / BasePageSize::SIZE as usize > current_page {
-			// Identity-map this possible page of the RSDP.
-			let frame = PhysFrame::<BasePageSize>::containing_address(x86_64::PhysAddr::new(
-				current_address as u64,
-			));
-			paging::identity_map::<BasePageSize>(frame.start_address().into());
-			current_page = current_address / BasePageSize::SIZE as usize;
-		}
-
+	for current_address in (start_address..end_address).step_by(16) {
 		// Verify the signature to find out if this is really an ACPI RSDP.
 		let rsdp = unsafe { &*(ptr::with_exposed_provenance::<AcpiRsdp>(current_address)) };
 		if &rsdp.signature != b"RSD PTR " {
@@ -344,23 +325,9 @@ fn detect_rsdp(start_address: PhysAddr, end_address: PhysAddr) -> Result<&'stati
 /// Detects ACPI support of the computer system.
 /// Returns a reference to the ACPI RSDP within the Ok() if successful or an empty Err() on failure.
 fn detect_acpi() -> Result<&'static AcpiRsdp, ()> {
-	if let Some(rsdp) = env::rsdp() {
-		trace!("RSDP detected successfully at {rsdp:#x?}");
-		let rsdp = unsafe {
-			ptr::with_exposed_provenance::<AcpiRsdp>(rsdp.get())
-				.as_ref()
-				.unwrap()
-		};
-		assert!(&rsdp.signature == b"RSD PTR ", "RSDP Address not valid!");
-		return Ok(rsdp);
-	}
-
 	// Get the address of the EBDA.
-	let frame = PhysFrame::<BasePageSize>::containing_address(EBDA_PTR_LOCATION.into());
-	paging::identity_map::<BasePageSize>(frame.start_address().into());
-	let ebda_ptr_location: &u16 =
-		unsafe { &*(VirtAddr::from(EBDA_PTR_LOCATION.as_u64()).as_ptr()) };
-	let ebda_address = PhysAddr::new(u64::from(*ebda_ptr_location) << 4);
+	let ebda_address =
+		(unsafe { ptr::with_exposed_provenance::<u16>(EBDA_PTR_LOCATION).read() } as usize) << 4;
 
 	// Check if the pointed address is valid. This check is also done in ACPICA.
 	if ebda_address > EBDA_MINIMUM_ADDRESS {
@@ -379,7 +346,7 @@ fn detect_acpi() -> Result<&'static AcpiRsdp, ()> {
 	Err(())
 }
 
-fn search_s5_in_table(table: AcpiTable<'_>) {
+fn search_s5_in_table(table: AcpiTable) {
 	// Get the AML code.
 	// As we do not implement an AML interpreter, we search through the bytecode.
 	let aml = unsafe {
@@ -430,7 +397,7 @@ fn search_s5_in_table(table: AcpiTable<'_>) {
 	}
 }
 
-fn parse_fadt(fadt: AcpiTable<'_>) {
+fn parse_fadt(fadt: AcpiTable) {
 	// Get us a reference to the actual fields of the FADT table.
 	// Note that not all fields may be accessible depending on the ACPI revision of the computer.
 	// Always check fadt.table_end_address() when accessing an optional field!
@@ -453,23 +420,31 @@ fn parse_fadt(fadt: AcpiTable<'_>) {
 
 	// Map the "Differentiated System Description Table" (DSDT).
 	let x_dsdt_field_address = (&raw const fadt_table.x_dsdt).addr();
-	let dsdt_address = if x_dsdt_field_address < fadt.table_end_address() && fadt_table.x_dsdt > 0 {
-		PhysAddr::new(fadt_table.x_dsdt)
-	} else {
-		PhysAddr::new(fadt_table.dsdt.into())
-	};
-	let dsdt = AcpiTable::map(dsdt_address);
+	let dsdt_address =
+		if x_dsdt_field_address < fadt.table_end_address() && fadt_table.x_dsdt > 0 {
+			fadt_table.x_dsdt
+		} else {
+			fadt_table.dsdt.into()
+		}
+		.try_into()
+		.unwrap();
+	let dsdt = unsafe { AcpiTable::map(dsdt_address) };
 
 	// Check it.
 	assert!(
-		dsdt.header.signature() == "DSDT",
+		dsdt.header_ref().signature() == "DSDT",
 		"DSDT at {:p} has invalid signature \"{}\"",
-		dsdt_address,
-		dsdt.header.signature()
+		dsdt.header,
+		dsdt.header_ref().signature()
 	);
 	assert!(
-		verify_checksum(dsdt.header_start_address(), dsdt.header.length as usize).is_ok(),
-		"DSDT at {dsdt_address:p} has invalid checksum"
+		verify_checksum(
+			dsdt.header_start_address(),
+			dsdt.header_ref().length as usize
+		)
+		.is_ok(),
+		"DSDT at {:p} has invalid checksum",
+		dsdt.header
 	);
 
 	// Try to find the "_S5_" object for SLP_TYPA in the DSDT AML bytecode.
@@ -477,7 +452,7 @@ fn parse_fadt(fadt: AcpiTable<'_>) {
 	search_s5_in_table(dsdt);
 }
 
-fn parse_ssdt(ssdt: AcpiTable<'_>) {
+fn parse_ssdt(ssdt: AcpiTable) {
 	// We don't need to parse the SSDT if we already have information about the "_S5_" object
 	// (e.g. from the DSDT or a previous SSDT).
 	if SLP_TYPA.get().is_some() {
@@ -488,12 +463,12 @@ fn parse_ssdt(ssdt: AcpiTable<'_>) {
 	search_s5_in_table(ssdt);
 }
 
-pub fn get_madt() -> Option<&'static AcpiTable<'static>> {
+pub fn get_madt() -> Option<&'static AcpiTable> {
 	MADT.get()
 }
 
 #[cfg(feature = "pci")]
-pub fn get_mcfg_table() -> Option<&'static AcpiTable<'static>> {
+pub fn get_mcfg_table() -> Option<&'static AcpiTable> {
 	MCFG.get()
 }
 
@@ -515,13 +490,15 @@ pub fn init() {
 	// Both are called RSDT in the following.
 	let rsdp = detect_acpi().expect("Hermit requires an ACPI-compliant system");
 	let rsdt_physical_address = if rsdp.revision >= 2 {
-		PhysAddr::new(rsdp.xsdt_physical_address)
+		rsdp.xsdt_physical_address
 	} else {
-		PhysAddr::new(rsdp.rsdt_physical_address.into())
-	};
+		rsdp.rsdt_physical_address.into()
+	}
+	.try_into()
+	.unwrap();
 
 	// Map the RSDT.
-	let rsdt = AcpiTable::map(rsdt_physical_address);
+	let rsdt = unsafe { AcpiTable::map(rsdt_physical_address) };
 
 	// The RSDT contains pointers to all available ACPI tables.
 	// Iterate through them.
@@ -530,55 +507,73 @@ pub fn init() {
 		// Depending on the RSDP revision, either an XSDT or an RSDT has been chosen above.
 		// The XSDT contains 64-bit pointers whereas the RSDT has 32-bit pointers.
 		let table_physical_address = if rsdp.revision >= 2 {
-			let address = unsafe {
-				PhysAddr::new(ptr::with_exposed_provenance::<u64>(current_address).read_unaligned())
-			};
+			let address =
+				unsafe { ptr::with_exposed_provenance::<u64>(current_address).read_unaligned() };
 			current_address += mem::size_of::<u64>();
 			address
 		} else {
 			let address = unsafe {
-				PhysAddr::new(
-					ptr::with_exposed_provenance::<u32>(current_address)
-						.read_unaligned()
-						.into(),
-				)
+				ptr::with_exposed_provenance::<u32>(current_address)
+					.read_unaligned()
+					.into()
 			};
 			current_address += mem::size_of::<u32>();
 			address
-		};
+		}
+		.try_into()
+		.unwrap();
 
-		let table = AcpiTable::map(table_physical_address);
-		debug!("Found ACPI table: {}", table.header.signature());
+		let table = unsafe { AcpiTable::map(table_physical_address) };
+		debug!("Found ACPI table: {}", table.header_ref().signature());
 
-		if table.header.signature() == "APIC" {
+		if table.header_ref().signature() == "APIC" {
 			// The "Multiple APIC Description Table" (MADT) aka "APIC Table" (APIC)
 			// Check and save the entire APIC table for the get_apic_table() call.
 			assert!(
-				verify_checksum(table.header_start_address(), table.header.length as usize).is_ok(),
-				"MADT at {table_physical_address:p} has invalid checksum"
+				verify_checksum(
+					table.header_start_address(),
+					table.header_ref().length as usize
+				)
+				.is_ok(),
+				"MADT at {:p} has invalid checksum",
+				table.header
 			);
 			MADT.set(table).unwrap();
-		} else if table.header.signature() == "FACP" {
+		} else if table.header_ref().signature() == "FACP" {
 			// The "Fixed ACPI Description Table" (FADT) aka "Fixed ACPI Control Pointer" (FACP)
 			// Check and parse this table for the poweroff() call.
 			assert!(
-				verify_checksum(table.header_start_address(), table.header.length as usize).is_ok(),
-				"FADT at {table_physical_address:p} has invalid checksum"
+				verify_checksum(
+					table.header_start_address(),
+					table.header_ref().length as usize
+				)
+				.is_ok(),
+				"FADT at {:p} has invalid checksum",
+				table.header
 			);
 			parse_fadt(table);
-		} else if table.header.signature() == "SSDT" {
+		} else if table.header_ref().signature() == "SSDT" {
 			assert!(
-				verify_checksum(table.header_start_address(), table.header.length as usize).is_ok(),
-				"SSDT at {table_physical_address:p} has invalid checksum"
+				verify_checksum(
+					table.header_start_address(),
+					table.header_ref().length as usize
+				)
+				.is_ok(),
+				"SSDT at {:p} has invalid checksum",
+				table.header
 			);
 			parse_ssdt(table);
-		} else if table.header.signature() == "MCFG" {
+		} else if table.header_ref().signature() == "MCFG" {
 			#[cfg(feature = "pci")]
 			{
 				assert!(
-					verify_checksum(table.header_start_address(), table.header.length as usize)
-						.is_ok(),
-					"MCFG at {table_physical_address:p} has invalid checksum"
+					verify_checksum(
+						table.header_start_address(),
+						table.header_ref().length as usize
+					)
+					.is_ok(),
+					"MCFG at {:p} has invalid checksum",
+					table.header
 				);
 				MCFG.set(table).unwrap();
 			}

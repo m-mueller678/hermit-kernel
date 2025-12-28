@@ -18,6 +18,7 @@
 #![feature(never_type)]
 #![feature(slice_from_ptr_range)]
 #![feature(slice_ptr_get)]
+#![feature(ptr_as_ref_unchecked)]
 #![cfg_attr(
 	any(target_arch = "aarch64", target_arch = "riscv64"),
 	feature(specialization)
@@ -104,7 +105,7 @@ fn synch_all_cores() {
 
 	CORE_COUNTER.fetch_add(1, Ordering::SeqCst);
 
-	let possible_cpus = kernel::get_possible_cpus();
+	let possible_cpus = Arch::get_possible_cpus();
 	while CORE_COUNTER.load(Ordering::SeqCst) != possible_cpus {
 		spin_loop();
 	}
@@ -137,7 +138,10 @@ fn boot_processor_main() -> ! {
 	info!("Enabled features: {}", built_info::FEATURES_LOWERCASE_STR);
 	info!("Built on {}", built_info::BUILT_TIME_UTC);
 
-	info!("Kernel starts at {:p}", env::get_base_address());
+	info!(
+		"Kernel starts at {:p}",
+		core::ptr::without_provenance::<u8>(env::get_base_address())
+	);
 
 	if let Some(fdt) = env::fdt() {
 		info!("FDT:\n{fdt:#?}");
@@ -155,7 +159,7 @@ fn boot_processor_main() -> ! {
 	scheduler::add_current_core();
 	Arch::enable();
 
-	arch::kernel::boot_next_processor();
+	Arch::boot_next_processor();
 
 	synch_all_cores();
 
@@ -190,7 +194,7 @@ fn application_processor_main() -> ! {
 	#[cfg(not(target_arch = "riscv64"))]
 	scheduler::add_current_core();
 	Arch::enable();
-	arch::kernel::boot_next_processor();
+	Arch::boot_next_processor();
 
 	debug!("Entering idle loop for application processor");
 

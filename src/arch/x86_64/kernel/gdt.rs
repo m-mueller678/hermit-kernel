@@ -12,8 +12,9 @@ use x86_64::structures::tss::TaskStateSegment;
 use super::CURRENT_STACK_ADDRESS;
 use super::interrupts::{IST_ENTRIES, IST_SIZE};
 use super::scheduler::TaskStacks;
+use crate::PageSize;
+use crate::arch::x86_64::Size4KiB;
 use crate::arch::x86_64::kernel::core_local::{CoreLocal, core_scheduler};
-use crate::arch::x86_64::mm::paging::{BasePageSize, PageSize};
 use crate::config::KERNEL_STACK_SIZE;
 
 pub fn add_current_core() {
@@ -34,13 +35,9 @@ pub fn add_current_core() {
 	// Allocate all ISTs for this core.
 	// Every task later gets its own IST, so the IST allocated here is only used by the Idle task.
 	for i in 0..IST_ENTRIES {
-		let size = if i == 0 {
-			IST_SIZE
-		} else {
-			BasePageSize::SIZE as usize
-		};
+		let size = if i == 0 { IST_SIZE } else { Size4KiB::size() };
 
-		let layout = Layout::from_size_align(size, BasePageSize::SIZE as usize).unwrap();
+		let layout = Layout::from_size_align(size, Size4KiB::size()).unwrap();
 		let ist = unsafe { alloc(layout) };
 		assert!(!ist.is_null());
 		let ist_start = unsafe { ist.add(size - TaskStacks::MARKER_SIZE) };

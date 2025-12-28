@@ -4,32 +4,25 @@ use core::alloc::Layout;
 use core::arch::x86_64::_mm_mfence;
 #[cfg(feature = "acpi")]
 use core::fmt;
-use core::hint::spin_loop;
+use core::num::NonZeroUsize;
 use core::sync::atomic::Ordering;
-use core::{cmp, mem, ptr};
+use core::{cmp, ptr};
 
-use align_address::Align;
 use arch::x86_64::kernel::core_local::*;
 use arch::x86_64::kernel::{interrupts, processor};
-use free_list::PageLayout;
 use hermit_sync::{OnceCell, SpinMutex, without_interrupts};
-use memory_addresses::{AddrRange, PhysAddr, VirtAddr};
 use x86_64::registers::control::Cr3;
 use x86_64::registers::model_specific::Msr;
 
 use super::interrupts::IDT;
+use crate::arch::PageFlagsTrait;
+use crate::arch::x86_64::Size4KiB;
 use crate::arch::x86_64::kernel::CURRENT_STACK_ADDRESS;
-#[cfg(feature = "acpi")]
-use crate::arch::x86_64::kernel::acpi;
-use crate::arch::x86_64::mm::paging;
-use crate::arch::x86_64::mm::paging::{
-	BasePageSize, PageSize, PageTableEntryFlags, PageTableEntryFlagsExt,
-};
 use crate::config::*;
-use crate::mm::{PageAlloc, PageBox, PageRangeAllocator};
+use crate::mm::{map_contiguous, virtual_memory};
 use crate::scheduler::CoreId;
 use crate::time::{cpu_timestamp_frequency_mhz, cpu_timestamp_us};
-use crate::{arch, env};
+use crate::{PageFlags, PageSize, arch, env};
 
 /// APIC Location and Status (R/W) See Table 35-2. See Section 10.4.4, Local APIC  Status and Location.
 const IA32_APIC_BASE: Msr = Msr::new(0x1b);
@@ -115,16 +108,16 @@ const SPURIOUS_INTERRUPT_NUMBER: u8 = 127;
 /// While our boot processor is already in x86-64 mode, application processors boot up in 16-bit real mode
 /// and need an address in the CS:IP addressing scheme to jump to.
 /// The CS:IP addressing scheme is limited to 2^20 bytes (= 1 MiB).
-const SMP_BOOT_CODE_ADDRESS: VirtAddr = VirtAddr::new(0x8000);
+const SMP_BOOT_CODE_ADDRESS: usize = 0x8000;
 
-const SMP_BOOT_CODE_OFFSET_ENTRY: u64 = 0x08;
-const SMP_BOOT_CODE_OFFSET_CPU_ID: u64 = SMP_BOOT_CODE_OFFSET_ENTRY + 0x08;
-const SMP_BOOT_CODE_OFFSET_PML4: u64 = SMP_BOOT_CODE_OFFSET_CPU_ID + 0x04;
+const SMP_BOOT_CODE_OFFSET_ENTRY: usize = 0x08;
+const SMP_BOOT_CODE_OFFSET_CPU_ID: usize = SMP_BOOT_CODE_OFFSET_ENTRY + 0x08;
+const SMP_BOOT_CODE_OFFSET_PML4: usize = SMP_BOOT_CODE_OFFSET_CPU_ID + 0x04;
 
 const X2APIC_ENABLE: u64 = 1 << 10;
 
-static LOCAL_APIC_ADDRESS: OnceCell<VirtAddr> = OnceCell::new();
-static IOAPIC_ADDRESS: OnceCell<VirtAddr> = OnceCell::new();
+/// IO apic virtual address
+static IOAPIC_ADDRESS: OnceCell<NonZeroUsize> = OnceCell::new();
 
 /// Stores the Local APIC IDs of all CPUs. The index equals the Core ID.
 /// Both numbers often match, but don't need to (e.g. when a core has been disabled).
@@ -286,201 +279,39 @@ pub fn local_apic_id_count() -> u32 {
 	CPU_LOCAL_APIC_IDS.lock().len() as u32
 }
 
-fn init_ioapic_address(phys_addr: PhysAddr) {
+fn init_ioapic_address(phys_addr: usize) {
 	if env::is_uefi() {
 		// UEFI systems have already id mapped everything, so we can just set the physical address as the virtual one
 		IOAPIC_ADDRESS
-			.set(VirtAddr::new(phys_addr.as_u64()))
+			.set(NonZeroUsize::new(phys_addr).unwrap())
 			.unwrap();
 	} else {
-		let layout = PageLayout::from_size(BasePageSize::SIZE as usize).unwrap();
-		let page_range = PageAlloc::allocate(layout).unwrap();
-		let ioapic_address = VirtAddr::from(page_range.start());
+		let ioapic_address =
+			virtual_memory::allocate::<Size4KiB>(NonZeroUsize::new(1).unwrap()).unwrap();
 		IOAPIC_ADDRESS.set(ioapic_address).unwrap();
-		debug!("Mapping IOAPIC at {phys_addr:p} to virtual address {ioapic_address:p}");
-
-		let mut flags = PageTableEntryFlags::empty();
-		flags.device().writable().execute_disable();
-		paging::map::<BasePageSize>(ioapic_address, phys_addr, 1, flags);
-	}
-}
-
-#[cfg(not(feature = "acpi"))]
-fn detect_from_acpi() -> Result<PhysAddr, ()> {
-	// dummy implementation if acpi support is disabled
-	Err(())
-}
-
-#[cfg(feature = "acpi")]
-fn detect_from_acpi() -> Result<PhysAddr, ()> {
-	// Get the Multiple APIC Description Table (MADT) from the ACPI information and its specific table header.
-	let madt = acpi::get_madt().ok_or(())?;
-	let madt_header =
-		unsafe { &*(ptr::with_exposed_provenance::<AcpiMadtHeader>(madt.table_start_address())) };
-
-	// Jump to the actual table entries (after the table header).
-	let mut current_address = madt.table_start_address() + mem::size_of::<AcpiMadtHeader>();
-
-	// Loop through all table entries.
-	while current_address < madt.table_end_address() {
-		let record =
-			unsafe { &*(ptr::with_exposed_provenance::<AcpiMadtRecordHeader>(current_address)) };
-		current_address += mem::size_of::<AcpiMadtRecordHeader>();
-
-		match record.entry_type {
-			0 => {
-				// Processor Local APIC
-				let processor_local_apic_record = unsafe {
-					&*(ptr::with_exposed_provenance::<ProcessorLocalApicRecord>(current_address))
-				};
-				debug!("Found Processor Local APIC record: {processor_local_apic_record}");
-
-				if processor_local_apic_record.flags & CPU_FLAG_ENABLED > 0 {
-					add_local_apic_id(processor_local_apic_record.apic_id);
-				}
-			}
-			1 => {
-				// I/O APIC
-				let ioapic_record =
-					unsafe { &*(ptr::with_exposed_provenance::<IoApicRecord>(current_address)) };
-				debug!("Found I/O APIC record: {ioapic_record}");
-
-				init_ioapic_address(PhysAddr::new(ioapic_record.address.into()));
-			}
-			_ => {
-				// Just ignore other entries for now.
-			}
-		}
-
-		current_address += record.length as usize - mem::size_of::<AcpiMadtRecordHeader>();
-	}
-
-	// Successfully derived all information from the MADT.
-	// Return the physical address of the Local APIC.
-	Ok(PhysAddr::new(madt_header.local_apic_address.into()))
-}
-
-/// Helper function to search Floating Pointer Structure of the Multiprocessing Specification
-fn search_mp_floating(memory_range: AddrRange<PhysAddr>) -> Result<&'static ApicMP, ()> {
-	let layout = PageLayout::from_size(BasePageSize::SIZE as usize).unwrap();
-	let page_range = PageBox::new(layout).unwrap();
-	let virtual_address = VirtAddr::from(page_range.start());
-
-	for current_address in memory_range.iter().step_by(BasePageSize::SIZE as usize) {
-		let mut flags = PageTableEntryFlags::empty();
-		flags.normal().writable();
-		paging::map::<BasePageSize>(
-			virtual_address,
-			current_address.align_down(BasePageSize::SIZE),
-			1,
-			flags,
+		debug!(
+			"Mapping IOAPIC at {phys_addr:p} to virtual address {ioapic_address:p}",
+			phys_addr = ptr::without_provenance::<u8>(phys_addr),
+			ioapic_address = ptr::without_provenance::<u8>(ioapic_address.get())
 		);
 
-		for i in 0..BasePageSize::SIZE / 4 {
-			let mut tmp: *const u32 = virtual_address.as_ptr();
-			tmp = unsafe { tmp.offset(i.try_into().unwrap()) };
-			let apic_mp = unsafe { &*tmp.cast::<ApicMP>() };
-			if apic_mp.signature == MP_FLT_SIGNATURE
-				&& !(apic_mp.version > 4 || apic_mp.features[0] != 0)
-			{
-				return Ok(apic_mp);
-			}
+		unsafe {
+			map_contiguous::<Size4KiB>(
+				ioapic_address,
+				phys_addr,
+				NonZeroUsize::new(1).unwrap(),
+				PageFlags::device().writable(),
+			);
 		}
 	}
-
-	Err(())
 }
 
-/// Helper function to detect APIC by the Multiprocessor Specification
-fn detect_from_mp() -> Result<PhysAddr, ()> {
-	let mp_float = if let Ok(mpf) = search_mp_floating(
-		AddrRange::new(PhysAddr::new(0x9f000u64), PhysAddr::new(0xa0000u64)).unwrap(),
-	) {
-		Ok(mpf)
-	} else if let Ok(mpf) = search_mp_floating(
-		AddrRange::new(PhysAddr::new(0xf0000u64), PhysAddr::new(0x10_0000u64)).unwrap(),
-	) {
-		Ok(mpf)
-	} else {
-		Err(())
-	}?;
-
-	info!("Found MP config at {:#x}", { mp_float.mp_config });
-	info!(
-		"System uses Multiprocessing Specification 1.{}",
-		mp_float.version
+fn default_apic() -> usize {
+	let default_address = 0xfee0_0000;
+	warn!(
+		"Using default APIC address: {:p}",
+		ptr::without_provenance::<u8>(default_address)
 	);
-	info!("MP features 1: {}", mp_float.features[0]);
-
-	if mp_float.features[1] & 0x80 > 0 {
-		info!("PIC mode implemented");
-	} else {
-		info!("Virtual-Wire mode implemented");
-	}
-
-	let layout = PageLayout::from_size(BasePageSize::SIZE as usize).unwrap();
-	let page_range = PageBox::new(layout).unwrap();
-	let virtual_address = VirtAddr::from(page_range.start());
-
-	let mut flags = PageTableEntryFlags::empty();
-	flags.normal().writable();
-	paging::map::<BasePageSize>(
-		virtual_address,
-		PhysAddr::from((mp_float.mp_config as usize).align_down(BasePageSize::SIZE as usize)),
-		1,
-		flags,
-	);
-
-	let mut addr: usize =
-		(virtual_address | (u64::from(mp_float.mp_config) & (BasePageSize::SIZE - 1))) as usize;
-	let mp_config: &ApicConfigTable = unsafe { &*(ptr::with_exposed_provenance(addr)) };
-	if mp_config.signature != MP_CONFIG_SIGNATURE {
-		warn!("MP config table invalid!");
-		return Err(());
-	}
-
-	if mp_config.entry_count == 0 {
-		warn!("No MP table entries, guessing IOAPIC...");
-		let default_address = PhysAddr::new(0xfec0_0000);
-
-		init_ioapic_address(default_address);
-	} else {
-		// entries starts directly after the config table
-		addr += mem::size_of::<ApicConfigTable>();
-		for _i in 0..mp_config.entry_count {
-			match unsafe { *(ptr::with_exposed_provenance::<u8>(addr)) } {
-				// CPU entry
-				0 => {
-					let cpu_entry: &ApicProcessorEntry =
-						unsafe { &*(ptr::with_exposed_provenance(addr)) };
-					if cpu_entry.cpu_flags & 0x01 == 0x01 {
-						add_local_apic_id(cpu_entry.id);
-					}
-					addr += mem::size_of::<ApicProcessorEntry>();
-				}
-				// IO-APIC entry
-				2 => {
-					let io_entry: &ApicIoEntry = unsafe { &*(ptr::with_exposed_provenance(addr)) };
-					let ioapic = PhysAddr::new(io_entry.addr.into());
-					info!("IOAPIC found at {ioapic:p}");
-
-					init_ioapic_address(ioapic);
-
-					addr += mem::size_of::<ApicIoEntry>();
-				}
-				_ => {
-					addr += 8;
-				}
-			}
-		}
-	}
-
-	Ok(PhysAddr::new(mp_config.lapic.into()))
-}
-
-fn default_apic() -> PhysAddr {
-	let default_address = PhysAddr::new(0xfee0_0000);
-	warn!("Using default APIC address: {default_address:p}");
 	init_ioapic_address(default_address);
 	default_address
 }
@@ -490,36 +321,7 @@ pub fn eoi() {
 }
 
 pub fn init() {
-	// Detect CPUs and APICs.
-	let local_apic_physical_address = {
-		detect_from_acpi()
-			.or_else(|()| detect_from_mp())
-			.unwrap_or_else(|()| default_apic())
-	};
-
-	// Initialize x2APIC or xAPIC, depending on what's available.
-	if processor::supports_x2apic() {
-		init_x2apic();
-	} else if env::is_uefi() {
-		// already id mapped in UEFI systems, just use the physical address as virtual one
-		LOCAL_APIC_ADDRESS
-			.set(VirtAddr::new(local_apic_physical_address.as_u64()))
-			.unwrap();
-	} else {
-		// We use the traditional xAPIC mode available on all x86-64 CPUs.
-		// It uses a mapped page for communication.
-		let layout = PageLayout::from_size(BasePageSize::SIZE as usize).unwrap();
-		let page_range = PageAlloc::allocate(layout).unwrap();
-		let local_apic_address = VirtAddr::from(page_range.start());
-		LOCAL_APIC_ADDRESS.set(local_apic_address).unwrap();
-		debug!(
-			"Mapping Local APIC at {local_apic_physical_address:p} to virtual address {local_apic_address:p}"
-		);
-
-		let mut flags = PageTableEntryFlags::empty();
-		flags.device().writable().execute_disable();
-		paging::map::<BasePageSize>(local_apic_address, local_apic_physical_address, 1, flags);
-	}
+	init_x2apic();
 
 	// Set gates to ISRs for the APIC interrupts we are going to enable.
 	unsafe {
@@ -700,7 +502,7 @@ pub fn init_x2apic() {
 /// Initialize the required _start variables for the next CPU to be booted.
 pub fn init_next_processor_variables() {
 	// Allocate stack for the CPU and pass the addresses.
-	let layout = Layout::from_size_align(KERNEL_STACK_SIZE, BasePageSize::SIZE as usize).unwrap();
+	let layout = Layout::from_size_align(KERNEL_STACK_SIZE, Size4KiB::size()).unwrap();
 	let stack = unsafe { alloc(layout) };
 	assert!(!stack.is_null());
 	CURRENT_STACK_ADDRESS.store(stack, Ordering::Relaxed);
@@ -714,7 +516,6 @@ pub fn boot_application_processors() {
 	use core::hint;
 
 	use hermit_entry::boot_info::RawBootInfo;
-	use x86_64::structures::paging::Translate;
 
 	use super::start;
 
@@ -722,33 +523,14 @@ pub fn boot_application_processors() {
 
 	// We shouldn't have any problems fitting the boot code into a single page, but let's better be sure.
 	assert!(
-		smp_boot_code.len() <= BasePageSize::SIZE as usize,
+		smp_boot_code.len() <= Size4KiB::size(),
 		"SMP Boot Code is larger than a page"
 	);
 	debug!("SMP boot code is {} bytes long", smp_boot_code.len());
-
-	if env::is_uefi() {
-		// Since UEFI already provides identity-mapped pagetables, we only have to sanity-check the identity mapping
-		let pt = unsafe { crate::arch::mm::paging::identity_mapped_page_table() };
-		let virt_addr = SMP_BOOT_CODE_ADDRESS;
-		let phys_addr = pt.translate_addr(virt_addr.into()).unwrap();
-		assert_eq!(phys_addr.as_u64(), virt_addr.as_u64());
-	} else {
-		// Identity-map the boot code page and copy over the code.
-		debug!("Mapping SMP boot code to physical and virtual address {SMP_BOOT_CODE_ADDRESS:p}");
-		let mut flags = PageTableEntryFlags::empty();
-		flags.normal().writable();
-		paging::map::<BasePageSize>(
-			SMP_BOOT_CODE_ADDRESS,
-			PhysAddr::new(SMP_BOOT_CODE_ADDRESS.as_u64()),
-			1,
-			flags,
-		);
-	}
 	unsafe {
 		ptr::copy_nonoverlapping(
 			smp_boot_code.as_ptr(),
-			SMP_BOOT_CODE_ADDRESS.as_mut_ptr(),
+			ptr::with_exposed_provenance_mut::<u8>(SMP_BOOT_CODE_ADDRESS),
 			smp_boot_code.len(),
 		);
 	}
@@ -757,16 +539,18 @@ pub fn boot_application_processors() {
 		let (frame, val) = Cr3::read_raw();
 		let value = frame.start_address().as_u64() | u64::from(val);
 		// Pass the PML4 page table address to the boot code.
-		*((SMP_BOOT_CODE_ADDRESS + SMP_BOOT_CODE_OFFSET_PML4).as_mut_ptr::<u32>()) =
-			value.try_into().unwrap();
+		*(ptr::with_exposed_provenance_mut::<u32>(
+			SMP_BOOT_CODE_ADDRESS + SMP_BOOT_CODE_OFFSET_PML4,
+		)) = value.try_into().unwrap();
 		// Set entry point
 		debug!(
 			"Set entry point for application processor to {:p}",
 			start::_start as *const ()
 		);
-		(SMP_BOOT_CODE_ADDRESS + SMP_BOOT_CODE_OFFSET_ENTRY)
-			.as_mut_ptr::<unsafe extern "C" fn(Option<&'static RawBootInfo>, cpu_id: u32) -> !>()
-			.write_unaligned(start::_start);
+		ptr::with_exposed_provenance_mut::<
+			unsafe extern "C" fn(Option<&'static RawBootInfo>, cpu_id: u32) -> !,
+		>(SMP_BOOT_CODE_ADDRESS + SMP_BOOT_CODE_OFFSET_ENTRY)
+		.write_unaligned(start::_start);
 	}
 
 	// Now wake up each application processor.
@@ -777,8 +561,10 @@ pub fn boot_application_processors() {
 		let core_id_to_boot = core_id_to_boot as u32;
 		if core_id_to_boot != core_id {
 			unsafe {
-				*((SMP_BOOT_CODE_ADDRESS + SMP_BOOT_CODE_OFFSET_CPU_ID).as_mut_ptr()) =
-					core_id_to_boot;
+				ptr::with_exposed_provenance_mut::<u32>(
+					SMP_BOOT_CODE_ADDRESS + SMP_BOOT_CODE_OFFSET_CPU_ID,
+				)
+				.write(core_id_to_boot);
 			}
 			let destination = u64::from(apic_id) << 32;
 
@@ -809,7 +595,7 @@ pub fn boot_application_processors() {
 				IA32_X2APIC_ICR,
 				destination
 					| APIC_ICR_DELIVERY_MODE_STARTUP
-					| ((SMP_BOOT_CODE_ADDRESS.as_u64()) >> 12),
+					| ((SMP_BOOT_CODE_ADDRESS as u64) >> 12),
 			);
 			debug!("Waiting for it to respond");
 
@@ -875,42 +661,24 @@ pub fn wakeup_core(core_id_to_wakeup: CoreId) {
 	}
 }
 
-/// Translate the x2APIC MSR into an xAPIC memory address.
-#[inline]
-fn translate_x2apic_msr_to_xapic_address(x2apic_msr: u32) -> VirtAddr {
-	*LOCAL_APIC_ADDRESS.get().unwrap() + ((u64::from(x2apic_msr) & 0xff) << 4)
-}
-
 fn local_apic_read(x2apic_msr: u32) -> u32 {
-	if processor::supports_x2apic() {
-		// x2APIC is simple, we can just read from the given MSR.
-		unsafe { Msr::new(x2apic_msr).read() as u32 }
-	} else {
-		unsafe { *(translate_x2apic_msr_to_xapic_address(x2apic_msr).as_ptr::<u32>()) }
-	}
+	unsafe { Msr::new(x2apic_msr).read() as u32 }
 }
 
 fn ioapic_write(reg: u32, value: u32) {
 	unsafe {
-		core::ptr::write_volatile(IOAPIC_ADDRESS.get().unwrap().as_mut_ptr::<u32>(), reg);
-		core::ptr::write_volatile(
-			(*IOAPIC_ADDRESS.get().unwrap() + 4 * mem::size_of::<u32>()).as_mut_ptr::<u32>(),
-			value,
-		);
+		let base = ptr::with_exposed_provenance_mut::<u32>(IOAPIC_ADDRESS.get().unwrap().get());
+		base.write_volatile(reg);
+		base.add(4).write_volatile(value);
 	}
 }
 
 fn ioapic_read(reg: u32) -> u32 {
-	let value;
-
 	unsafe {
-		core::ptr::write_volatile(IOAPIC_ADDRESS.get().unwrap().as_mut_ptr::<u32>(), reg);
-		value = core::ptr::read_volatile(
-			(*IOAPIC_ADDRESS.get().unwrap() + 4 * mem::size_of::<u32>()).as_ptr::<u32>(),
-		);
+		let base = ptr::with_exposed_provenance_mut::<u32>(IOAPIC_ADDRESS.get().unwrap().get());
+		base.write_volatile(reg);
+		base.add(4).read_volatile()
 	}
-
-	value
 }
 
 fn ioapic_version() -> u32 {
@@ -922,53 +690,14 @@ fn ioapic_max_redirection_entry() -> u8 {
 }
 
 fn local_apic_write(x2apic_msr: u32, value: u64) {
-	if processor::supports_x2apic() {
-		// x2APIC is simple, we can just write the given value to the given MSR.
-		unsafe {
-			Msr::new(x2apic_msr).write(value);
-		}
-	} else {
-		// Write the value.
-		let value_ref = unsafe {
-			&mut *(translate_x2apic_msr_to_xapic_address(x2apic_msr).as_mut_ptr::<u32>())
-		};
-
-		if x2apic_msr == IA32_X2APIC_ICR {
-			// The ICR1 register in xAPIC mode also has a Delivery Status bit.
-			// Wait until previous interrupt was delivered.
-			// This bit does not exist in x2APIC mode (cf. Intel Vol. 3A, 10.12.9).
-			while (unsafe { core::ptr::read_volatile(value_ref) }
-				& APIC_ICR_DELIVERY_STATUS_PENDING)
-				> 0
-			{
-				spin_loop();
-			}
-
-			// Instead of a single 64-bit ICR register, xAPIC has two 32-bit registers (ICR1 and ICR2).
-			// There is a gap between them and the destination field in ICR2 is also 8 bits instead of 32 bits.
-			let destination = ((value >> 8) & 0xff00_0000) as u32;
-			let icr2 = unsafe {
-				&mut *((*LOCAL_APIC_ADDRESS.get().unwrap() + APIC_ICR2).as_mut_ptr::<u32>())
-			};
-			*icr2 = destination;
-
-			// The remaining data without the destination will now be written into ICR1.
-		}
-
-		*value_ref = value as u32;
+	unsafe {
+		Msr::new(x2apic_msr).write(value);
 	}
 }
 
 pub fn print_information() {
 	infoheader!(" MULTIPROCESSOR INFORMATION ");
-	infoentry!(
-		"APIC in use",
-		if processor::supports_x2apic() {
-			"x2APIC"
-		} else {
-			"xAPIC"
-		}
-	);
+	infoentry!("APIC in use", "x2APIC");
 	infoentry!("Initialized CPUs", arch::get_processor_count());
 	infofooter!();
 }

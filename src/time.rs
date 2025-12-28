@@ -1,7 +1,7 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 use core::time::Duration;
 
-use crate::{Arch, ArchTrait, arch};
+use crate::{Arch, ArchTrait};
 
 #[allow(non_camel_case_types)]
 pub type time_t = i64;
@@ -81,9 +81,7 @@ impl SystemTime {
 
 	/// Returns the system time corresponding to "now".
 	pub fn now() -> Self {
-		Self(timespec::from_usec(
-			arch::kernel::systemtime::now_micros() as i64
-		))
+		Self(timespec::from_usec(unix_time_us() as i64))
 	}
 
 	/// Returns the amount of time elapsed from an earlier point in time.
@@ -99,7 +97,6 @@ impl SystemTime {
 		)
 	}
 }
-
 impl From<timespec> for SystemTime {
 	fn from(t: timespec) -> Self {
 		Self(t)
@@ -137,4 +134,8 @@ pub fn cpu_timestamp_us() -> u64 {
 	// We simulate a timer with a 1 microsecond resolution by taking the CPU timestamp
 	// and dividing it by the CPU frequency in MHz.
 	Arch::get_timestamp() / cpu_timestamp_frequency_mhz()
+}
+
+pub fn unix_time_us() -> u64 {
+	Arch::timestamp_unix_offset() + cpu_timestamp_us()
 }

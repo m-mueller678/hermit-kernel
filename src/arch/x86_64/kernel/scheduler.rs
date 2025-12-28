@@ -1,21 +1,16 @@
 //! Architecture dependent interface to initialize a task
 
 use core::arch::naked_asm;
-use core::{mem, ptr};
+use core::mem;
 
-use align_address::Align;
-use free_list::{PageLayout, PageRange};
 use memory_addresses::{PhysAddr, VirtAddr};
 
 use super::interrupts::{IDT, IST_SIZE};
+use crate::arch::PageSize;
+use crate::arch::x86_64::Size4KiB;
 use crate::arch::x86_64::kernel::core_local::*;
 use crate::arch::x86_64::kernel::{apic, interrupts};
-use crate::arch::x86_64::mm::paging::{
-	BasePageSize, PageSize, PageTableEntryFlags, PageTableEntryFlagsExt,
-};
 use crate::config::*;
-use crate::env;
-use crate::mm::{FrameAlloc, PageAlloc, PageRangeAllocator};
 use crate::scheduler::PerCoreSchedulerExt;
 use crate::scheduler::task::{Task, TaskFrame};
 
@@ -88,70 +83,69 @@ impl TaskStacks {
 	/// We have a marker at the very top of the stack for debugging (`0xdeadbeef`), which should not be overridden.
 	pub const MARKER_SIZE: usize = 0x10;
 
-	pub fn new(size: usize) -> TaskStacks {
-		let user_stack_size = if size < KERNEL_STACK_SIZE {
-			KERNEL_STACK_SIZE
-		} else {
-			size.align_up(BasePageSize::SIZE as usize)
-		};
-		let total_size = user_stack_size + DEFAULT_STACK_SIZE + IST_SIZE;
-		let layout = PageLayout::from_size(total_size + 4 * BasePageSize::SIZE as usize).unwrap();
-		let page_range = PageAlloc::allocate(layout).unwrap();
-		let virt_addr = VirtAddr::from(page_range.start());
+	pub fn new(_size: usize) -> TaskStacks {
+		// let user_stack_size = if size < KERNEL_STACK_SIZE {
+		// 	KERNEL_STACK_SIZE
+		// } else {
+		// 	size.align_up(Size4KiB::size())
+		// };
+		// let total_size = user_stack_size + DEFAULT_STACK_SIZE + IST_SIZE;
+		// let layout = todo!(); //PageLayout::from_size(total_size + 4 * BasePageSize::SIZE as usize).unwrap();
+		// let virt_addr = todo!(); //VirtAddr::from(page_range.start());
 
-		let frame_layout = PageLayout::from_size(total_size).unwrap();
-		let frame_range = FrameAlloc::allocate(frame_layout)
-			.expect("Failed to allocate Physical Memory for TaskStacks");
-		let phys_addr = PhysAddr::from(frame_range.start());
+		// // let frame_layout = PageLayout::from_size(total_size).unwrap();
+		// // let frame_range = todo!(); // FrameAlloc::allocate(frame_layout) .expect("Failed to allocate Physical Memory for TaskStacks");
+		// let phys_addr = todo!(); //PhysAddr::from(frame_range.start());
 
-		debug!(
-			"Create stacks at {:p} with a size of {} KB",
-			virt_addr,
-			total_size >> 10
-		);
+		// debug!(
+		// 	"Create stacks at {:p} with a size of {} KB",
+		// 	virt_addr,
+		// 	total_size >> 10
+		// );
 
-		let mut flags = PageTableEntryFlags::empty();
-		flags.normal().writable().execute_disable();
+		// let mut flags = PageTableEntryFlags::empty();
+		// flags.normal().writable().execute_disable();
 
-		// map IST1 into the address space
-		crate::arch::mm::paging::map::<BasePageSize>(
-			virt_addr + BasePageSize::SIZE,
-			phys_addr,
-			IST_SIZE / BasePageSize::SIZE as usize,
-			flags,
-		);
+		// // map IST1 into the address space
+		// crate::arch::x86_64::mm::paging::map::<Size4KiB>(
+		// 	virt_addr + Size4KiB::size(),
+		// 	phys_addr,
+		// 	IST_SIZE / Size4KiB::size(),
+		// 	flags,
+		// );
 
-		// map kernel stack into the address space
-		crate::arch::mm::paging::map::<BasePageSize>(
-			virt_addr + IST_SIZE + 2 * BasePageSize::SIZE,
-			phys_addr + IST_SIZE,
-			DEFAULT_STACK_SIZE / BasePageSize::SIZE as usize,
-			flags,
-		);
+		// // map kernel stack into the address space
+		// crate::arch::x86_64::mm::paging::map::<Size4KiB>(
+		// 	virt_addr + IST_SIZE + 2 * Size4KiB::SIZE,
+		// 	phys_addr + IST_SIZE,
+		// 	DEFAULT_STACK_SIZE / Size4KiB::size(),
+		// 	flags,
+		// );
 
-		// map user stack into the address space
-		crate::arch::mm::paging::map::<BasePageSize>(
-			virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * BasePageSize::SIZE,
-			phys_addr + IST_SIZE + DEFAULT_STACK_SIZE,
-			user_stack_size / BasePageSize::SIZE as usize,
-			flags,
-		);
+		// // map user stack into the address space
+		// crate::arch::x86_64::mm::paging::map::<Size4KiB>(
+		// 	virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * Size4KiB::SIZE,
+		// 	phys_addr + IST_SIZE + DEFAULT_STACK_SIZE,
+		// 	user_stack_size / Size4KiB::size(),
+		// 	flags,
+		// );
 
-		// clear user stack
-		unsafe {
-			ptr::write_bytes(
-				(virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * BasePageSize::SIZE)
-					.as_mut_ptr::<u8>(),
-				0,
-				user_stack_size,
-			);
-		}
+		// // clear user stack
+		// unsafe {
+		// 	// ptr::write_bytes(
+		// 	// 	(virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * BasePageSize::SIZE)
+		// 	// 		.as_mut_ptr::<u8>(),
+		// 	// 	0,
+		// 	// 	user_stack_size,
+		// 	// );
+		// }
 
-		TaskStacks::Common(CommonStack {
-			virt_addr,
-			phys_addr,
-			total_size,
-		})
+		// TaskStacks::Common(CommonStack {
+		// 	virt_addr,
+		// 	phys_addr,
+		// 	total_size,
+		// })
+		todo!()
 	}
 
 	pub fn from_boot_stacks() -> TaskStacks {
@@ -180,7 +174,7 @@ impl TaskStacks {
 		match self {
 			TaskStacks::Boot(_) => VirtAddr::zero(),
 			TaskStacks::Common(stacks) => {
-				stacks.virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * BasePageSize::SIZE
+				stacks.virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * Size4KiB::size()
 			}
 		}
 	}
@@ -188,7 +182,7 @@ impl TaskStacks {
 	pub fn get_kernel_stack(&self) -> VirtAddr {
 		match self {
 			TaskStacks::Boot(stacks) => stacks.stack,
-			TaskStacks::Common(stacks) => stacks.virt_addr + IST_SIZE + 2 * BasePageSize::SIZE,
+			TaskStacks::Common(stacks) => stacks.virt_addr + IST_SIZE + 2 * Size4KiB::size(),
 		}
 	}
 
@@ -202,7 +196,7 @@ impl TaskStacks {
 	pub fn get_interrupt_stack(&self) -> VirtAddr {
 		match self {
 			TaskStacks::Boot(stacks) => stacks.ist1,
-			TaskStacks::Common(stacks) => stacks.virt_addr + BasePageSize::SIZE,
+			TaskStacks::Common(stacks) => stacks.virt_addr + Size4KiB::size(),
 		}
 	}
 
@@ -214,38 +208,7 @@ impl TaskStacks {
 impl Drop for TaskStacks {
 	fn drop(&mut self) {
 		// we should never deallocate a boot stack
-		match self {
-			TaskStacks::Boot(_) => {}
-			TaskStacks::Common(stacks) => {
-				debug!(
-					"Deallocating stacks at {:p} with a size of {} KB",
-					stacks.virt_addr,
-					stacks.total_size >> 10,
-				);
-
-				if !env::is_uefi() {
-					crate::arch::mm::paging::unmap::<BasePageSize>(
-						stacks.virt_addr,
-						stacks.total_size / BasePageSize::SIZE as usize + 4,
-					);
-				}
-				let range = PageRange::from_start_len(
-					stacks.virt_addr.as_usize(),
-					stacks.total_size + 4 * BasePageSize::SIZE as usize,
-				)
-				.unwrap();
-				unsafe {
-					PageAlloc::deallocate(range);
-				}
-
-				let range =
-					PageRange::from_start_len(stacks.phys_addr.as_usize(), stacks.total_size)
-						.unwrap();
-				unsafe {
-					FrameAlloc::deallocate(range);
-				}
-			}
-		}
+		todo!()
 	}
 }
 

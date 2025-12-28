@@ -130,14 +130,15 @@ impl<T: ConfigRegionAccess> PciDevice<T> {
 			warn!("Currently only mapping of prefetchable bars is supported!");
 		}
 
-		// Since the bios/bootloader manages the physical address space, the address got from the bar is unique and not overlapping.
-		// We therefore do not need to reserve any additional memory in our kernel.
-		// Map bar into RW^X virtual memory
-		let physical_address = address;
-		let virtual_address =
-			crate::mm::map(PhysAddr::new(physical_address), size, true, true, no_cache);
+		todo!()
+		// // Since the bios/bootloader manages the physical address space, the address got from the bar is unique and not overlapping.
+		// // We therefore do not need to reserve any additional memory in our kernel.
+		// // Map bar into RW^X virtual memory
+		// let physical_address = address;
+		// let virtual_address =
+		// 	crate::mm::map(PhysAddr::new(physical_address), size, true, true, no_cache);
 
-		Some((virtual_address, size))
+		// Some((virtual_address, size))
 	}
 
 	pub fn get_irq(&self) -> Option<InterruptLine> {
@@ -342,7 +343,7 @@ pub(crate) fn get_interrupt_handlers() -> HashMap<InterruptLine, InterruptHandle
 
 	#[cfg(target_arch = "x86_64")]
 	{
-		use crate::kernel::serial::get_serial_handler;
+		use crate::arch::x86_64::kernel::serial::get_serial_handler;
 		let (irq_number, handler) = get_serial_handler();
 
 		if let Some(map) = handlers.get_mut(&irq_number) {
