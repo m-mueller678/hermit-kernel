@@ -2,6 +2,7 @@ use core::sync::atomic::AtomicU64;
 use core::sync::atomic::Ordering::*;
 use core::{mem, ptr};
 
+use log::Level;
 use x86_64::PhysAddr;
 use x86_64::registers::control::{Cr2, Cr3};
 pub use x86_64::structures::idt::InterruptStackFrame as ExceptionStackFrame;
@@ -13,7 +14,7 @@ use x86_64::structures::paging::page_table::PageTableEntry;
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::{Size2MiB, Size4KiB};
 use crate::mm::physical_memory;
-use crate::{PageFlagsTrait, PageSize, PageTableEntryDebug, PagingTrait};
+use crate::{Arch, ArchTrait, PageFlagsTrait, PageSize, PageTableEntryDebug, PagingTrait};
 
 fn entry_from_raw(x: u64) -> PageTableEntry {
 	unsafe { mem::transmute(x) }
@@ -63,8 +64,16 @@ pub fn table_root_node() -> &'static [AtomicU64; 512] {
 
 unsafe impl PagingTrait for crate::x86_64::Arch {
 	unsafe fn init_paging() {
+		let memory = Arch::physical_mem();
+		// hermit loader sets up recursive page tables (the last entry points to the table root).
+		// We have no need for those.
+		table_root_node()[511].store(0, Relaxed);
+		// crate::mm::page_dump::dump_page_table_hierarchical();
 		crate::mm::page_dump::dump_page_table_leaves();
-		crate::mm::page_dump::dump_page_table_hierarchical();
+		dbg!(
+			entry_from_raw(table_root_node()[511].load(Relaxed)).addr(),
+			table_root_node().as_ptr(),
+		);
 		todo!();
 	}
 	type Flags = PageFlags;

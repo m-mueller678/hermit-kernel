@@ -172,3 +172,7 @@ pub fn format_binary_si_bytes(x: usize) -> impl core::fmt::Display {
 		f.write_str(suffix)
 	})
 }
+
+pub fn format_addr(x: usize) -> impl core::fmt::Pointer {
+	core::ptr::without_provenance::<u8>(x)
+}

@@ -142,7 +142,7 @@ impl AcpiTable {
 			NonZeroUsize::new((frame_past_header - physical_map_address) / Size4KiB::size())
 				.unwrap();
 		loop {
-			let offset = (physical_address - physical_map_address) as usize;
+			let offset = physical_address - physical_map_address;
 			let virtual_page_addr = virtual_memory::allocate::<Size4KiB>(page_count).unwrap();
 			unsafe {
 				// TODO shouldn't this be already identity mapped?
@@ -151,7 +151,7 @@ impl AcpiTable {
 					physical_map_address,
 					page_count,
 					PageFlags::normal(),
-				)
+				);
 			};
 
 			// Get a pointer to the header and query the table length.

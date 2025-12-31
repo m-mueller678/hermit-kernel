@@ -1,7 +1,10 @@
 use alloc::alloc::AllocError;
 use core::mem::MaybeUninit;
 
+use hermit_entry::boot_info;
+
 use crate::PageSize;
+use crate::env::{self, boot_info};
 
 pub fn init() {
 	todo!()

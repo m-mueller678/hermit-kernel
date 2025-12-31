@@ -7,7 +7,7 @@ use core::fmt;
 use ahash::RandomState;
 use hashbrown::HashMap;
 use hermit_sync::without_interrupts;
-use memory_addresses::{PhysAddr, VirtAddr};
+use memory_addresses::VirtAddr;
 use pci_types::capability::CapabilityIterator;
 use pci_types::{
 	Bar, CommandRegister, ConfigRegionAccess, DeviceId, EndpointHeader, InterruptLine,

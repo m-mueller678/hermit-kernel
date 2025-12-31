@@ -49,6 +49,7 @@ use crate::{Arch, PageFlags, PageSize, PagingTrait};
 
 pub mod page_dump;
 pub mod physical_memory;
+pub mod range_diff;
 pub mod virtual_memory;
 
 #[global_allocator]

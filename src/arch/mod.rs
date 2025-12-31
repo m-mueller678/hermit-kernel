@@ -1,6 +1,7 @@
 //! Architecture-specific architecture abstraction.
 
 use crate::errno::Errno;
+use crate::mm::range_diff::RangeDiff;
 use crate::scheduler::CoreId;
 
 pub trait ArchTrait: PagingTrait {
@@ -46,6 +47,7 @@ pub trait ArchTrait: PagingTrait {
 	type MinPageSize: PageSize;
 
 	fn print_statistics();
+	fn physical_mem() -> RangeDiff;
 }
 
 pub trait PageFlagsTrait {

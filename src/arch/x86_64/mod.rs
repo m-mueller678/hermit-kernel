@@ -1,8 +1,9 @@
 pub mod kernel;
 mod paging;
 
+use crate::mm::range_diff::RangeDiff;
 use crate::scheduler::CoreId;
-use crate::{ArchTrait, PageSize};
+use crate::{ArchTrait, PageSize, env};
 
 /// Force strict CPU ordering, serializes load and store operations.
 #[allow(dead_code)]
@@ -99,6 +100,40 @@ impl ArchTrait for Arch {
 
 	fn print_statistics() {
 		kernel::print_statistics();
+	}
+
+	fn physical_mem() -> RangeDiff {
+		let fdt = env::fdt().unwrap();
+		let fdt_start = env::boot_info().hardware_info.device_tree.unwrap().get() as usize;
+		let fdt_end = fdt_start + fdt.total_size();
+		let fdt_region = fdt_start..fdt_end;
+		let fdt_reserved_regions = fdt.memory_reservations().map(|r| {
+			let start = r.address() as usize;
+			let end = start + r.size() as usize;
+			start..end
+		});
+		const FREE_LIST_INLINE_SIZE: usize = 64;
+
+		let kernel_region = {
+			let kernel_range = env::boot_info().load_info.kernel_image_addr_range.clone();
+			let start = if env::is_uefi() {
+				kernel_range.start as usize
+			} else {
+				// FIXME: memory before the kernel causes trouble on non-uefi systems.
+				// It is unclear, which exact regions cause problems
+				0
+			};
+			start..(kernel_range.end as usize)
+		};
+		let reserved_regions = core::iter::once(kernel_region)
+			.chain(core::iter::once(fdt_region))
+			.chain(fdt_reserved_regions);
+		let memories = fdt.find_all_nodes("/memory").map(|m| {
+			let region = m.reg().unwrap().next().unwrap();
+			let start = region.starting_address.addr();
+			start..start + region.size.unwrap()
+		});
+		RangeDiff::new(memories, reserved_regions)
 	}
 }
 
