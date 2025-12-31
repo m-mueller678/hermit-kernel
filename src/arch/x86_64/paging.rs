@@ -2,7 +2,6 @@ use core::sync::atomic::AtomicU64;
 use core::sync::atomic::Ordering::*;
 use core::{mem, ptr};
 
-use log::Level;
 use x86_64::PhysAddr;
 use x86_64::registers::control::{Cr2, Cr3};
 pub use x86_64::structures::idt::InterruptStackFrame as ExceptionStackFrame;
@@ -14,7 +13,8 @@ use x86_64::structures::paging::page_table::PageTableEntry;
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::{Size2MiB, Size4KiB};
 use crate::mm::physical_memory;
-use crate::{Arch, ArchTrait, PageFlagsTrait, PageSize, PageTableEntryDebug, PagingTrait};
+use crate::mm::range_diff::RangeDiff;
+use crate::{PageFlagsTrait, PageSize, PageTableEntryDebug, PagingTrait};
 
 fn entry_from_raw(x: u64) -> PageTableEntry {
 	unsafe { mem::transmute(x) }
@@ -37,10 +37,9 @@ fn frame_from_address<S: PageSize>(addr: usize) -> PhysFrame {
 	unsafe { PhysFrame::from_start_address_unchecked(PhysAddr::new_unsafe(addr as u64)) }
 }
 
-fn make_entry<S: PageSize>(address: usize, flags: PageTableEntryFlags) -> u64 {
-	let frame = frame_from_address::<S>(address);
+fn make_entry(address: usize, flags: PageTableEntryFlags) -> u64 {
 	let mut entry = PageTableEntry::new();
-	entry.set_frame(frame, flags);
+	entry.set_addr(PhysAddr::new(address as u64), flags);
 	entry_to_raw(entry)
 }
 fn walk_to_containing_table<S: PageSize>(address: usize) -> (&'static [AtomicU64; 512], usize) {
@@ -63,18 +62,38 @@ pub fn table_root_node() -> &'static [AtomicU64; 512] {
 }
 
 unsafe impl PagingTrait for crate::x86_64::Arch {
-	unsafe fn init_paging() {
-		let memory = Arch::physical_mem();
+	unsafe fn init_paging(physical_mem: &mut RangeDiff) {
+		let l4 = table_root_node();
+		let l3 = to_child(l4, 0);
+		assert!(super::kernel::processor::supports_1gib_pages());
+		let memory_end = physical_mem.memory_end();
+		let num_identity_map = memory_end.div_ceil(1 << 30);
+		assert!(
+			num_identity_map <= 512,
+			"mapping of more than 512GiB of memory is not yet implemented"
+		);
+		for (i, x) in l3.iter().enumerate() {
+			x.store(
+				make_entry(
+					i << 30,
+					PageTableEntryFlags::PRESENT
+						| PageTableEntryFlags::HUGE_PAGE
+						| PageTableEntryFlags::WRITABLE
+						| PageTableEntryFlags::DIRTY
+						| PageTableEntryFlags::ACCESSED,
+				),
+				Relaxed,
+			);
+		}
+
 		// hermit loader sets up recursive page tables (the last entry points to the table root).
 		// We have no need for those.
 		table_root_node()[511].store(0, Relaxed);
+
+		x86_64::instructions::tlb::flush_all();
+
 		// crate::mm::page_dump::dump_page_table_hierarchical();
 		crate::mm::page_dump::dump_page_table_leaves();
-		dbg!(
-			entry_from_raw(table_root_node()[511].load(Relaxed)).addr(),
-			table_root_node().as_ptr(),
-		);
-		todo!();
 	}
 	type Flags = PageFlags;
 	unsafe fn merge_page<S: PageSize>(address: usize) {
@@ -155,7 +174,7 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		} else {
 			PageTableEntryFlags::empty()
 		};
-		let empty_entry = make_entry::<S>(0, empty_flags);
+		let empty_entry = make_entry(0, empty_flags);
 		let old_entry = table[index].swap(empty_entry, Relaxed);
 		let old_entry = entry_from_raw(old_entry);
 		debug_assert!(old_entry.flags().contains(PageTableEntryFlags::PRESENT));

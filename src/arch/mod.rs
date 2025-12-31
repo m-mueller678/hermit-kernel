@@ -59,7 +59,7 @@ pub trait PageFlagsTrait {
 
 pub unsafe trait PagingTrait {
 	type Flags: PageFlagsTrait;
-	unsafe fn init_paging();
+	unsafe fn init_paging(physical_mem: &mut RangeDiff);
 	unsafe fn merge_page<S: PageSize>(address: usize);
 	unsafe fn split_page<S: PageSize>(address: usize);
 	/// # Safety

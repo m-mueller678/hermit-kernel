@@ -91,7 +91,7 @@ impl ArchTrait for Arch {
 
 	type DevicePageSize = Size4KiB;
 	type HeapPageSize = Size4KiB;
-	type IdentityPageSize = Size2MiB;
+	type IdentityPageSize = Size1GiB;
 	type MinPageSize = Size4KiB;
 
 	fn timestamp_unix_offset() -> u64 {
@@ -153,3 +153,4 @@ macro_rules! define_page_size {
 
 define_page_size!(Size4KiB, 1 << 12);
 define_page_size!(Size2MiB, 1 << 21);
+define_page_size!(Size1GiB, 1 << 30);

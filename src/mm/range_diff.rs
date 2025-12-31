@@ -23,6 +23,9 @@ impl RangeDiff {
 		memories: impl Iterator<Item = Range<usize>>,
 		holes: impl Iterator<Item = Range<usize>>,
 	) -> Self {
+		fn range_non_empty(x: &Range<usize>) -> bool {
+			x.start < x.end
+		}
 		let size = MinPageSize::size();
 		let mut ret = RangeDiff {
 			ranges: ArrayVec::new(),
@@ -30,9 +33,6 @@ impl RangeDiff {
 			i_memory: 0,
 			i_hole: 0,
 		};
-		fn range_non_empty(x: &Range<usize>) -> bool {
-			x.start < x.end
-		}
 		ret.ranges.extend(
 			memories
 				.map(|x| x.start.align_up(size)..x.end.align_down(size))
@@ -45,9 +45,11 @@ impl RangeDiff {
 				.filter(range_non_empty),
 		);
 		ret.ranges[..ret.memory_count].sort_unstable_by_key(|x| x.start);
-		ret.i_hole = ret.ranges.len();
 		ret.ranges[ret.memory_count..].sort_unstable_by_key(|x| x.start);
-
+		for [a, b] in ret.ranges[..ret.memory_count].array_windows::<2>() {
+			assert!(a.end <= b.start);
+		}
+		ret.i_hole = ret.memory_count;
 		for x in &mut ret.ranges[..ret.memory_count] {
 			info!(
 				"available physical memory region: {:016p}..{:016p}",
@@ -57,7 +59,7 @@ impl RangeDiff {
 		}
 		for x in &ret.ranges[ret.memory_count..] {
 			info!(
-				"reserved physical memory region: {:016p}..{:016p}",
+				"reserved physical memory region:  {:016p}..{:016p}",
 				format_addr(x.start),
 				format_addr(x.end)
 			);
@@ -112,5 +114,9 @@ impl RangeDiff {
 		let found_range = self.advance_to_size(1)?;
 		self.ranges[self.i_memory].start = found_range.end;
 		Some(found_range)
+	}
+
+	pub fn memory_end(&self) -> usize {
+		self.ranges[self.memory_count - 1].end
 	}
 }

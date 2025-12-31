@@ -45,7 +45,7 @@ use core::num::NonZeroUsize;
 use hermit_sync::RawInterruptTicketMutex;
 use talc::{ErrOnOom, Talc, Talck};
 
-use crate::{Arch, PageFlags, PageSize, PagingTrait};
+use crate::{Arch, ArchTrait, PageFlags, PageSize, PagingTrait};
 
 pub mod page_dump;
 pub mod physical_memory;
@@ -56,9 +56,8 @@ pub mod virtual_memory;
 pub(crate) static ALLOCATOR: Talck<RawInterruptTicketMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 pub(crate) fn init() {
-	unsafe {
-		Arch::init_paging();
-	}
+	let mut physical_memory = Arch::physical_mem();
+	unsafe { Arch::init_paging(&mut physical_memory) };
 
 	// info!("Total memory size: {} MiB", total_mem >> 20);
 	// info!(
