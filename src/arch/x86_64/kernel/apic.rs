@@ -16,13 +16,13 @@ use x86_64::registers::model_specific::Msr;
 
 use super::interrupts::IDT;
 use crate::arch::PageFlagsTrait;
-use crate::arch::x86_64::Size4KiB;
+use crate::arch::x86_64::SIZE_4KIB;
 use crate::arch::x86_64::kernel::CURRENT_STACK_ADDRESS;
 use crate::config::*;
 use crate::mm::{map_contiguous, virtual_memory};
 use crate::scheduler::CoreId;
 use crate::time::{cpu_timestamp_frequency_mhz, cpu_timestamp_us};
-use crate::{PageFlags, PageSize, arch, env};
+use crate::{PageFlags, arch, env};
 
 /// APIC Location and Status (R/W) See Table 35-2. See Section 10.4.4, Local APIC  Status and Location.
 const IA32_APIC_BASE: Msr = Msr::new(0x1b);
@@ -287,7 +287,7 @@ fn init_ioapic_address(phys_addr: usize) {
 			.unwrap();
 	} else {
 		let ioapic_address =
-			virtual_memory::allocate::<Size4KiB>(NonZeroUsize::new(1).unwrap()).unwrap();
+			virtual_memory::allocate(SIZE_4KIB, NonZeroUsize::new(1).unwrap()).unwrap();
 		IOAPIC_ADDRESS.set(ioapic_address).unwrap();
 		debug!(
 			"Mapping IOAPIC at {phys_addr:p} to virtual address {ioapic_address:p}",
@@ -296,7 +296,8 @@ fn init_ioapic_address(phys_addr: usize) {
 		);
 
 		unsafe {
-			map_contiguous::<Size4KiB>(
+			map_contiguous(
+				SIZE_4KIB,
 				ioapic_address,
 				phys_addr,
 				NonZeroUsize::new(1).unwrap(),
@@ -502,7 +503,7 @@ pub fn init_x2apic() {
 /// Initialize the required _start variables for the next CPU to be booted.
 pub fn init_next_processor_variables() {
 	// Allocate stack for the CPU and pass the addresses.
-	let layout = Layout::from_size_align(KERNEL_STACK_SIZE, Size4KiB::size()).unwrap();
+	let layout = Layout::from_size_align(KERNEL_STACK_SIZE, SIZE_4KIB.usize()).unwrap();
 	let stack = unsafe { alloc(layout) };
 	assert!(!stack.is_null());
 	CURRENT_STACK_ADDRESS.store(stack, Ordering::Relaxed);
@@ -523,7 +524,7 @@ pub fn boot_application_processors() {
 
 	// We shouldn't have any problems fitting the boot code into a single page, but let's better be sure.
 	assert!(
-		smp_boot_code.len() <= Size4KiB::size(),
+		smp_boot_code.len() <= SIZE_4KIB.usize(),
 		"SMP Boot Code is larger than a page"
 	);
 	debug!("SMP boot code is {} bytes long", smp_boot_code.len());

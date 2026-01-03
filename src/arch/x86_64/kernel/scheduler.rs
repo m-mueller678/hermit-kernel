@@ -6,8 +6,7 @@ use core::mem;
 use memory_addresses::{PhysAddr, VirtAddr};
 
 use super::interrupts::{IDT, IST_SIZE};
-use crate::arch::PageSize;
-use crate::arch::x86_64::Size4KiB;
+use crate::arch::x86_64::SIZE_4KIB;
 use crate::arch::x86_64::kernel::core_local::*;
 use crate::arch::x86_64::kernel::{apic, interrupts};
 use crate::config::*;
@@ -87,7 +86,7 @@ impl TaskStacks {
 		// let user_stack_size = if size < KERNEL_STACK_SIZE {
 		// 	KERNEL_STACK_SIZE
 		// } else {
-		// 	size.align_up(Size4KiB::size())
+		// 	size.align_up(SIZE_4KIB.usize())
 		// };
 		// let total_size = user_stack_size + DEFAULT_STACK_SIZE + IST_SIZE;
 		// let layout = todo!(); //PageLayout::from_size(total_size + 4 * BasePageSize::SIZE as usize).unwrap();
@@ -108,9 +107,9 @@ impl TaskStacks {
 
 		// // map IST1 into the address space
 		// crate::arch::x86_64::mm::paging::map::<Size4KiB>(
-		// 	virt_addr + Size4KiB::size(),
+		// 	virt_addr + SIZE_4KIB.usize(),
 		// 	phys_addr,
-		// 	IST_SIZE / Size4KiB::size(),
+		// 	IST_SIZE / SIZE_4KIB.usize(),
 		// 	flags,
 		// );
 
@@ -118,7 +117,7 @@ impl TaskStacks {
 		// crate::arch::x86_64::mm::paging::map::<Size4KiB>(
 		// 	virt_addr + IST_SIZE + 2 * Size4KiB::SIZE,
 		// 	phys_addr + IST_SIZE,
-		// 	DEFAULT_STACK_SIZE / Size4KiB::size(),
+		// 	DEFAULT_STACK_SIZE / SIZE_4KIB.usize(),
 		// 	flags,
 		// );
 
@@ -126,7 +125,7 @@ impl TaskStacks {
 		// crate::arch::x86_64::mm::paging::map::<Size4KiB>(
 		// 	virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * Size4KiB::SIZE,
 		// 	phys_addr + IST_SIZE + DEFAULT_STACK_SIZE,
-		// 	user_stack_size / Size4KiB::size(),
+		// 	user_stack_size / SIZE_4KIB.usize(),
 		// 	flags,
 		// );
 
@@ -174,7 +173,7 @@ impl TaskStacks {
 		match self {
 			TaskStacks::Boot(_) => VirtAddr::zero(),
 			TaskStacks::Common(stacks) => {
-				stacks.virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * Size4KiB::size()
+				stacks.virt_addr + IST_SIZE + DEFAULT_STACK_SIZE + 3 * SIZE_4KIB.usize()
 			}
 		}
 	}
@@ -182,7 +181,7 @@ impl TaskStacks {
 	pub fn get_kernel_stack(&self) -> VirtAddr {
 		match self {
 			TaskStacks::Boot(stacks) => stacks.stack,
-			TaskStacks::Common(stacks) => stacks.virt_addr + IST_SIZE + 2 * Size4KiB::size(),
+			TaskStacks::Common(stacks) => stacks.virt_addr + IST_SIZE + 2 * SIZE_4KIB.usize(),
 		}
 	}
 
@@ -196,7 +195,7 @@ impl TaskStacks {
 	pub fn get_interrupt_stack(&self) -> VirtAddr {
 		match self {
 			TaskStacks::Boot(stacks) => stacks.ist1,
-			TaskStacks::Common(stacks) => stacks.virt_addr + Size4KiB::size(),
+			TaskStacks::Common(stacks) => stacks.virt_addr + SIZE_4KIB.usize(),
 		}
 	}
 

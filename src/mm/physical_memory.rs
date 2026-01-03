@@ -1,36 +1,34 @@
 use alloc::alloc::AllocError;
 use core::mem::MaybeUninit;
 
-use hermit_entry::boot_info;
-
-use crate::PageSize;
-use crate::env::{self, boot_info};
+use crate::mm::page_size::PageSize;
 
 pub fn init() {
 	todo!()
 }
-pub fn allocate_contiguous<S: PageSize>(count: usize) -> Result<usize, AllocError> {
+pub fn allocate_contiguous(page_size: PageSize, count: usize) -> Result<usize, AllocError> {
 	todo!()
 }
 /// Allocates all pages or fails
 /// # Safety
 /// start must be multiple of page size
-pub fn allocate_at<S: PageSize>(start: usize, count: usize) -> Result<(), AllocError> {
+pub fn allocate_at(page_size: PageSize, start: usize, count: usize) -> Result<(), AllocError> {
 	todo!()
 }
-pub fn allocate_multiple<S: PageSize>(
+pub fn allocate_multiple(
+	page_size: PageSize,
 	dst: &mut [MaybeUninit<usize>],
 ) -> Result<&mut [usize], AllocError> {
 	todo!()
 }
-pub fn allocate<S: PageSize>() -> Result<usize, AllocError> {
+pub fn allocate(page_size: PageSize) -> Result<usize, AllocError> {
 	todo!()
 }
-pub unsafe fn deallocate_multiple<S: PageSize>(frames: &[usize]) {
+pub unsafe fn deallocate_multiple(page_size: PageSize, frames: &[usize]) {
 	for &x in frames {
-		unsafe { deallocate::<S>(x) }
+		unsafe { deallocate(page_size, x) }
 	}
 }
-pub unsafe fn deallocate<S: PageSize>(frame: usize) {
+pub unsafe fn deallocate(page_size: PageSize, frame: usize) {
 	todo!()
 }

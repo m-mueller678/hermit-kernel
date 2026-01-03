@@ -1,9 +1,10 @@
 pub mod kernel;
 mod paging;
 
+use crate::mm::page_size::PageSize;
 use crate::mm::range_diff::RangeDiff;
 use crate::scheduler::CoreId;
-use crate::{ArchTrait, PageSize, env};
+use crate::{ArchTrait, env};
 
 /// Force strict CPU ordering, serializes load and store operations.
 #[allow(dead_code)]
@@ -89,10 +90,10 @@ impl ArchTrait for Arch {
 		kernel::boot_next_processor();
 	}
 
-	type DevicePageSize = Size4KiB;
-	type HeapPageSize = Size4KiB;
-	type IdentityPageSize = Size1GiB;
-	type MinPageSize = Size4KiB;
+	const DEVICE_PAGE_SIZE: PageSize = SIZE_4KIB;
+	const HEAP_PAGE_SIZE: PageSize = SIZE_4KIB;
+	const IDENTITY_PAGE_SIZE: PageSize = SIZE_1GIB;
+	const MIN_PAGE_SIZE: PageSize = SIZE_4KIB;
 
 	fn timestamp_unix_offset() -> u64 {
 		kernel::systemtime::timestamp_unix_offset()
@@ -137,20 +138,6 @@ impl ArchTrait for Arch {
 	}
 }
 
-pub trait ArchPageSize {}
-
-macro_rules! define_page_size {
-	($Name:ident,$size:expr) => {
-		pub struct $Name;
-		impl PageSize for $Name {
-			fn size() -> usize {
-				$size
-			}
-		}
-		impl ArchPageSize for $Name {}
-	};
-}
-
-define_page_size!(Size4KiB, 1 << 12);
-define_page_size!(Size2MiB, 1 << 21);
-define_page_size!(Size1GiB, 1 << 30);
+pub const SIZE_4KIB: PageSize = PageSize(1 << 12);
+pub const SIZE_2MIB: PageSize = PageSize(1 << 21);
+pub const SIZE_1GIB: PageSize = PageSize(1 << 30);

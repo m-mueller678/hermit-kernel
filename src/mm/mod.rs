@@ -45,9 +45,11 @@ use core::num::NonZeroUsize;
 use hermit_sync::RawInterruptTicketMutex;
 use talc::{ErrOnOom, Talc, Talck};
 
-use crate::{Arch, ArchTrait, PageFlags, PageSize, PagingTrait};
+use crate::mm::page_size::PageSize;
+use crate::{Arch, ArchTrait, PageFlags, PagingTrait};
 
 pub mod page_dump;
+pub mod page_size;
 pub mod physical_memory;
 pub mod range_diff;
 pub mod virtual_memory;
@@ -89,7 +91,8 @@ pub(crate) fn unmap(virtual_address: usize, size: usize) {
 	unimplemented!()
 }
 
-pub unsafe fn map_contiguous<S: PageSize>(
+pub unsafe fn map_contiguous(
+	page_size: PageSize,
 	virtual_address: NonZeroUsize,
 	physical_address: usize,
 	count: NonZeroUsize,
@@ -98,7 +101,8 @@ pub unsafe fn map_contiguous<S: PageSize>(
 	todo!();
 }
 
-pub unsafe fn unmap_contiguous<S: PageSize>(
+pub unsafe fn unmap_contiguous(
+	page_size: PageSize,
 	virtual_address: NonZeroUsize,
 	count: NonZeroUsize,
 ) -> NonZeroUsize {

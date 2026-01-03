@@ -1,6 +1,7 @@
 //! Architecture-specific architecture abstraction.
 
 use crate::errno::Errno;
+use crate::mm::page_size::PageSize;
 use crate::mm::range_diff::RangeDiff;
 use crate::scheduler::CoreId;
 
@@ -41,10 +42,10 @@ pub trait ArchTrait: PagingTrait {
 	fn get_possible_cpus() -> u32;
 	fn boot_next_processor();
 
-	type DevicePageSize: PageSize;
-	type IdentityPageSize: PageSize;
-	type HeapPageSize: PageSize;
-	type MinPageSize: PageSize;
+	const DEVICE_PAGE_SIZE: PageSize;
+	const IDENTITY_PAGE_SIZE: PageSize;
+	const HEAP_PAGE_SIZE: PageSize;
+	const MIN_PAGE_SIZE: PageSize;
 
 	fn print_statistics();
 	fn physical_mem() -> RangeDiff;
@@ -60,13 +61,18 @@ pub trait PageFlagsTrait {
 pub unsafe trait PagingTrait {
 	type Flags: PageFlagsTrait;
 	unsafe fn init_paging(physical_mem: &mut RangeDiff);
-	unsafe fn merge_page<S: PageSize>(address: usize);
-	unsafe fn split_page<S: PageSize>(address: usize);
+	unsafe fn merge_page(larger_page: PageSize, address: usize);
+	unsafe fn split_page(larger_page: PageSize, address: usize);
 	/// # Safety
 	/// physical_address must be a free physical frame of size S
 	/// virtual_address must be an unmapped page os size S currently configured for size S
-	unsafe fn map<S: PageSize>(virtual_address: usize, physical_address: usize, flags: Self::Flags);
-	unsafe fn unmap<S: PageSize>(virtual_address: usize) -> usize;
+	unsafe fn map(
+		page_size: PageSize,
+		virtual_address: usize,
+		physical_address: usize,
+		flags: Self::Flags,
+	);
+	unsafe fn unmap(page_size: PageSize, virtual_address: usize) -> usize;
 	fn walk_page_table_debug(
 		include_tracking_flags: bool,
 		callback: &mut dyn FnMut(&PageTableEntryDebug<'_>) -> bool,
@@ -88,10 +94,6 @@ pub trait PageTableVisitor {
 	fn page_entry(&mut self) -> bool;
 }
 
-pub trait PageSize: arch_impl::ArchPageSize {
-	fn size() -> usize;
-}
-
 pub use arch_impl::Arch;
 use pci_types::ConfigRegionAccess;
 // pub type Arch = impl ArchTrait;
@@ -106,14 +108,19 @@ macro_rules! forward_type {
 		pub type $T = <Arch as ArchTrait>::$T;
 	};
 }
+macro_rules! forward_const {
+	($X:ident:$T:ty) => {
+		pub const $X: $T = <Arch as ArchTrait>::$X;
+	};
+}
 
 forward_type!(SerialDevice);
 #[cfg(feature = "pci")]
 forward_type!(PciConfigRegion);
-forward_type!(DevicePageSize);
-forward_type!(IdentityPageSize);
-forward_type!(HeapPageSize);
-forward_type!(MinPageSize);
+forward_const!(DEVICE_PAGE_SIZE:PageSize);
+forward_const!(IDENTITY_PAGE_SIZE:PageSize);
+forward_const!(HEAP_PAGE_SIZE:PageSize);
+forward_const!(MIN_PAGE_SIZE:PageSize);
 pub type PageFlags = <Arch as PagingTrait>::Flags;
 
 cfg_if::cfg_if! {

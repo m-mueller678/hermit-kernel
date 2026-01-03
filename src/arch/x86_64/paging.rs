@@ -11,10 +11,11 @@ use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::page_table::PageTableEntry;
 
 use crate::arch::x86_64::kernel::processor;
-use crate::arch::x86_64::{Size2MiB, Size4KiB};
+use crate::arch::x86_64::{SIZE_2MIB, SIZE_4KIB};
+use crate::mm::page_size::PageSize;
 use crate::mm::physical_memory;
 use crate::mm::range_diff::RangeDiff;
-use crate::{PageFlagsTrait, PageSize, PageTableEntryDebug, PagingTrait};
+use crate::{PageFlagsTrait, PageTableEntryDebug, PagingTrait};
 
 fn entry_from_raw(x: u64) -> PageTableEntry {
 	unsafe { mem::transmute(x) }
@@ -32,8 +33,7 @@ fn to_child(node: &[AtomicU64; 512], index: usize) -> &[AtomicU64; 512] {
 	node_from_address(child_addr)
 }
 
-fn frame_from_address<S: PageSize>(addr: usize) -> PhysFrame {
-	debug_assert!(addr.is_multiple_of(S::size()));
+fn frame_from_address(addr: usize) -> PhysFrame {
 	unsafe { PhysFrame::from_start_address_unchecked(PhysAddr::new_unsafe(addr as u64)) }
 }
 
@@ -42,13 +42,16 @@ fn make_entry(address: usize, flags: PageTableEntryFlags) -> u64 {
 	entry.set_addr(PhysAddr::new(address as u64), flags);
 	entry_to_raw(entry)
 }
-fn walk_to_containing_table<S: PageSize>(address: usize) -> (&'static [AtomicU64; 512], usize) {
+fn walk_to_containing_table(
+	page_size: PageSize,
+	address: usize,
+) -> (&'static [AtomicU64; 512], usize) {
 	let mut indices = address >> 12;
 	let mut entry_size = 1 << (12 + 3 * 9);
 	let mut node = table_root_node();
 	loop {
 		let index = indices & 511;
-		if entry_size == S::size() {
+		if entry_size == page_size.usize() {
 			return (node, index);
 		}
 		node = to_child(node, index);
@@ -96,16 +99,16 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		crate::mm::page_dump::dump_page_table_leaves();
 	}
 	type Flags = PageFlags;
-	unsafe fn merge_page<S: PageSize>(address: usize) {
-		assert!(S::size() > Size4KiB::size());
-		let (table, index) = walk_to_containing_table::<S>(address);
+	unsafe fn merge_page(larger_page: PageSize, address: usize) {
+		assert!(larger_page > SIZE_4KIB);
+		let (table, index) = walk_to_containing_table(larger_page, address);
 		let child_frame = entry_from_raw(table[index].load(Relaxed));
 		debug_assert_eq!(child_frame.flags(), PageTableEntryFlags::PRESENT);
 		let child_frame = child_frame.frame().unwrap();
 		let child_frame = child_frame.start_address().as_u64() as usize;
 		if cfg!(debug_assertions) {
-			let child_size = S::size() >> 9;
-			let child_is_huge = child_size > Size4KiB::size();
+			let child_size = larger_page.usize() >> 9;
+			let child_is_huge = child_size > SIZE_4KIB.usize();
 			let expected_flags = if child_is_huge {
 				PageTableEntryFlags::HUGE_PAGE
 			} else {
@@ -116,20 +119,20 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 			}
 		}
 		unsafe {
-			physical_memory::deallocate::<S>(child_frame);
+			physical_memory::deallocate(SIZE_4KIB, child_frame);
 		}
 	}
 
-	unsafe fn split_page<S: PageSize>(address: usize) {
-		assert!(S::size() > Size4KiB::size());
-		let (table, index) = walk_to_containing_table::<S>(address);
+	unsafe fn split_page(larger_page: PageSize, address: usize) {
+		assert!(larger_page.usize() > SIZE_4KIB.usize());
+		let (table, index) = walk_to_containing_table(larger_page, address);
 		let entry = entry_from_raw(table[index].load(Relaxed));
 		assert_eq!(entry.flags(), PageTableEntryFlags::HUGE_PAGE);
-		let child_frame = physical_memory::allocate::<Size4KiB>().unwrap();
+		let child_frame = physical_memory::allocate(SIZE_4KIB).unwrap();
 		{
 			let child_frame = node_from_address(child_frame);
 			let mut child_entry = PageTableEntry::new();
-			child_entry.set_flags(if S::size() > Size2MiB::size() {
+			child_entry.set_flags(if larger_page > SIZE_2MIB {
 				PageTableEntryFlags::HUGE_PAGE
 			} else {
 				PageTableEntryFlags::empty()
@@ -141,7 +144,7 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		}
 		let mut entry = PageTableEntry::new();
 		entry.set_frame(
-			frame_from_address::<Size4KiB>(child_frame),
+			frame_from_address(child_frame),
 			PageTableEntryFlags::PRESENT,
 		);
 		table[index].store(entry_to_raw(entry), Relaxed);
@@ -150,25 +153,30 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 	/// # Safety
 	/// physical_address must be a free physical frame of size S
 	/// virtual_address must be an unmapped page os size S currently configured for size S
-	unsafe fn map<S: PageSize>(virtual_address: usize, physical_address: usize, flags: PageFlags) {
+	unsafe fn map(
+		page_size: PageSize,
+		virtual_address: usize,
+		physical_address: usize,
+		flags: PageFlags,
+	) {
 		let entry: u64 = {
-			let flags = if S::size() == 1 << 12 {
+			let flags = if page_size == SIZE_4KIB {
 				flags.0
 			} else {
 				flags.0 | PageTableEntryFlags::HUGE_PAGE
 			};
 			let mut entry = PageTableEntry::new();
-			entry.set_frame(frame_from_address::<S>(physical_address), flags);
+			entry.set_frame(frame_from_address(physical_address), flags);
 			entry_to_raw(entry)
 		};
 
-		let (table, index) = walk_to_containing_table::<S>(virtual_address);
+		let (table, index) = walk_to_containing_table(page_size, virtual_address);
 		table[index].store(entry, Relaxed);
 	}
 
-	unsafe fn unmap<S: PageSize>(virtual_address: usize) -> usize {
-		let (table, index) = walk_to_containing_table::<S>(virtual_address);
-		let is_huge = S::size() > Size4KiB::size();
+	unsafe fn unmap(page_size: PageSize, virtual_address: usize) -> usize {
+		let (table, index) = walk_to_containing_table(page_size, virtual_address);
+		let is_huge = page_size > SIZE_4KIB;
 		let empty_flags = if is_huge {
 			PageTableEntryFlags::HUGE_PAGE
 		} else {
@@ -183,7 +191,7 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 			old_entry.flags().contains(PageTableEntryFlags::HUGE_PAGE)
 		);
 		let phys_addr = old_entry.addr().as_u64() as usize;
-		debug_assert!(phys_addr.is_multiple_of(S::size()));
+		debug_assert!(phys_addr.is_multiple_of(page_size.usize()));
 		// the paging module has no problem unmapping this page, but the kernel does not touch the identity mappings after setting them up.
 		// This indicates a likely bug
 		debug_assert!(phys_addr != virtual_address);
@@ -214,7 +222,7 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 				let is_present = flags.contains(PageTableEntryFlags::PRESENT);
 				let has_children = is_present
 					&& !flags.contains(PageTableEntryFlags::HUGE_PAGE)
-					&& entry_size > Size4KiB::size();
+					&& entry_size > SIZE_4KIB.usize();
 				let visit_children = callback(&PageTableEntryDebug {
 					physical_addr: entry.addr().as_u64() as usize,
 					virtual_addr: virtual_address + entry_size * index,

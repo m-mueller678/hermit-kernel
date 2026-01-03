@@ -3,8 +3,8 @@ use core::ops::Range;
 use align_address::Align;
 use arrayvec::ArrayVec;
 
+use crate::MIN_PAGE_SIZE;
 use crate::logging::{format_addr, format_binary_si_bytes};
-use crate::{MinPageSize, PageSize};
 
 const CAPACITY: usize = 64;
 
@@ -26,7 +26,7 @@ impl RangeDiff {
 		fn range_non_empty(x: &Range<usize>) -> bool {
 			x.start < x.end
 		}
-		let size = MinPageSize::size();
+		let size = MIN_PAGE_SIZE.usize();
 		let mut ret = RangeDiff {
 			ranges: ArrayVec::new(),
 			memory_count: 0,

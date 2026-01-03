@@ -1,14 +1,14 @@
 use alloc::alloc::AllocError;
 use core::num::NonZeroUsize;
 
-use crate::PageSize;
+use crate::mm::page_size::PageSize;
 
 pub fn init() {
 	todo!()
 }
 
 /// Attempts to allocate a range of memory in page granularity.
-pub fn allocate<S: PageSize>(count: NonZeroUsize) -> Result<NonZeroUsize, AllocError> {
+pub fn allocate(page_size: PageSize, count: NonZeroUsize) -> Result<NonZeroUsize, AllocError> {
 	todo!()
 }
 
@@ -22,7 +22,8 @@ pub fn allocate<S: PageSize>(count: NonZeroUsize) -> Result<NonZeroUsize, AllocE
 ///
 /// # Safety
 /// - All pages in the range must be currently allocated
+///
 /// start must be aligned to the page size
-pub unsafe fn deallocate<S: PageSize>(start: NonZeroUsize, count: NonZeroUsize) {
+pub unsafe fn deallocate(page_size: PageSize, start: NonZeroUsize, count: NonZeroUsize) {
 	todo!()
 }

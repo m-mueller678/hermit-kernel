@@ -8,9 +8,9 @@ use hermit_sync::OnceCell;
 use x86_64::instructions::port::Port;
 
 use crate::arch::PageFlagsTrait;
-use crate::arch::x86_64::Size4KiB;
+use crate::arch::x86_64::SIZE_4KIB;
 use crate::mm::{self, virtual_memory};
-use crate::{PageFlags, PageSize, env};
+use crate::{PageFlags, env};
 
 /// Memory at this physical address is supposed to contain a pointer to the Extended BIOS Data Area (EBDA).
 const EBDA_PTR_LOCATION: usize = 0x0000_040e;
@@ -109,17 +109,17 @@ impl AcpiTable {
 		unsafe { self.header.as_ref() }
 	}
 	unsafe fn unmap_and_deallocate(&self, page_count: NonZeroUsize) {
-		let page = self.header.addr().get().align_down(Size4KiB::size());
+		let page = self.header.addr().get().align_down(SIZE_4KIB.0);
 		let page = NonZeroUsize::new(page).unwrap();
 		unsafe {
-			mm::unmap_contiguous::<Size4KiB>(page, page_count);
-			virtual_memory::deallocate::<Size4KiB>(page, page_count);
+			mm::unmap_contiguous(SIZE_4KIB, page, page_count);
+			virtual_memory::deallocate(SIZE_4KIB, page, page_count);
 		}
 	}
 	fn page_count(&self) -> NonZeroUsize {
 		NonZeroUsize::new(
-			(self.header.addr().get() % Size4KiB::size() + self.header_ref().length as usize)
-				.div_ceil(Size4KiB::size()),
+			(self.header.addr().get() % SIZE_4KIB.0 + self.header_ref().length as usize)
+				.div_ceil(SIZE_4KIB.0),
 		)
 		.unwrap()
 	}
@@ -133,20 +133,21 @@ impl AcpiTable {
 			};
 		}
 
-		let physical_map_address = physical_address.align_down(Size4KiB::size());
+		let physical_map_address = physical_address.align_down(SIZE_4KIB.usize());
 
 		// Allocate enough space to access the header.
 		let frame_past_header =
-			(physical_address + size_of::<AcpiSdtHeader>()).align_up(Size4KiB::size());
+			(physical_address + size_of::<AcpiSdtHeader>()).align_up(SIZE_4KIB.usize());
 		let mut page_count =
-			NonZeroUsize::new((frame_past_header - physical_map_address) / Size4KiB::size())
+			NonZeroUsize::new((frame_past_header - physical_map_address) / SIZE_4KIB.usize())
 				.unwrap();
 		loop {
 			let offset = physical_address - physical_map_address;
-			let virtual_page_addr = virtual_memory::allocate::<Size4KiB>(page_count).unwrap();
+			let virtual_page_addr = virtual_memory::allocate(SIZE_4KIB, page_count).unwrap();
 			unsafe {
 				// TODO shouldn't this be already identity mapped?
-				mm::map_contiguous::<Size4KiB>(
+				mm::map_contiguous(
+					SIZE_4KIB,
 					virtual_page_addr,
 					physical_map_address,
 					page_count,
