@@ -59,7 +59,15 @@ pub(crate) static ALLOCATOR: Talck<RawInterruptTicketMutex, ErrOnOom> = Talc::ne
 
 pub(crate) fn init() {
 	let mut physical_memory = Arch::physical_mem();
-	unsafe { Arch::init_paging(&mut physical_memory) };
+	let identity_map_info = unsafe { Arch::init_identity_mapping(&mut physical_memory) };
+
+	while let Some(memory) = physical_memory.take_remaining() {
+		unsafe {
+			physical_memory::claim(memory);
+		}
+	}
+
+	unsafe { Arch::claim_virtual_memory(identity_map_info) }
 
 	// info!("Total memory size: {} MiB", total_mem >> 20);
 	// info!(

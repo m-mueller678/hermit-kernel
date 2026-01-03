@@ -46,6 +46,8 @@ pub trait ArchTrait: PagingTrait {
 	const IDENTITY_PAGE_SIZE: PageSize;
 	const HEAP_PAGE_SIZE: PageSize;
 	const MIN_PAGE_SIZE: PageSize;
+	const PAGE_SIZES: [PageSize; Arch::NUM_PAGE_SIZES];
+	const NUM_PAGE_SIZES: usize;
 
 	fn print_statistics();
 	fn physical_mem() -> RangeDiff;
@@ -60,7 +62,9 @@ pub trait PageFlagsTrait {
 
 pub unsafe trait PagingTrait {
 	type Flags: PageFlagsTrait;
-	unsafe fn init_paging(physical_mem: &mut RangeDiff);
+	type IdentityMappingInfo;
+	unsafe fn init_identity_mapping(physical_mem: &mut RangeDiff) -> Self::IdentityMappingInfo;
+	unsafe fn claim_virtual_memory(x: Self::IdentityMappingInfo);
 	unsafe fn merge_page(larger_page: PageSize, address: usize);
 	unsafe fn split_page(larger_page: PageSize, address: usize);
 	/// # Safety

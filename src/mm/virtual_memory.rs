@@ -27,3 +27,7 @@ pub fn allocate(page_size: PageSize, count: NonZeroUsize) -> Result<NonZeroUsize
 pub unsafe fn deallocate(page_size: PageSize, start: NonZeroUsize, count: NonZeroUsize) {
 	todo!()
 }
+
+pub unsafe fn claim_pages(page_size: PageSize, start: NonZeroUsize, count: usize) {
+	todo!()
+}

@@ -110,10 +110,9 @@ impl ArchTrait for Arch {
 		let fdt_region = fdt_start..fdt_end;
 		let fdt_reserved_regions = fdt.memory_reservations().map(|r| {
 			let start = r.address() as usize;
-			let end = start + r.size() as usize;
+			let end = start + r.size();
 			start..end
 		});
-		const FREE_LIST_INLINE_SIZE: usize = 64;
 
 		let kernel_region = {
 			let kernel_range = env::boot_info().load_info.kernel_image_addr_range.clone();
@@ -136,6 +135,10 @@ impl ArchTrait for Arch {
 		});
 		RangeDiff::new(memories, reserved_regions)
 	}
+
+	const PAGE_SIZES: [PageSize; Arch::NUM_PAGE_SIZES] = [SIZE_4KIB, SIZE_2MIB, SIZE_1GIB];
+
+	const NUM_PAGE_SIZES: usize = 3;
 }
 
 pub const SIZE_4KIB: PageSize = PageSize(1 << 12);

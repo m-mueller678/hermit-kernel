@@ -1,3 +1,5 @@
+use core::num::NonZeroUsize;
+use core::ops::Range;
 use core::sync::atomic::AtomicU64;
 use core::sync::atomic::Ordering::*;
 use core::{mem, ptr};
@@ -13,8 +15,9 @@ use x86_64::structures::paging::page_table::PageTableEntry;
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::{SIZE_2MIB, SIZE_4KIB};
 use crate::mm::page_size::PageSize;
-use crate::mm::physical_memory;
 use crate::mm::range_diff::RangeDiff;
+use crate::mm::{physical_memory, virtual_memory};
+use crate::x86_64::SIZE_1GIB;
 use crate::{PageFlagsTrait, PageTableEntryDebug, PagingTrait};
 
 fn entry_from_raw(x: u64) -> PageTableEntry {
@@ -65,26 +68,31 @@ pub fn table_root_node() -> &'static [AtomicU64; 512] {
 }
 
 unsafe impl PagingTrait for crate::x86_64::Arch {
-	unsafe fn init_paging(physical_mem: &mut RangeDiff) {
+	unsafe fn init_identity_mapping(physical_mem: &mut RangeDiff) -> Self::IdentityMappingInfo {
 		let l4 = table_root_node();
 		let l3 = to_child(l4, 0);
 		assert!(super::kernel::processor::supports_1gib_pages());
 		let memory_end = physical_mem.memory_end();
 		let num_identity_map = memory_end.div_ceil(1 << 30);
+		dbg!(num_identity_map);
 		assert!(
 			num_identity_map <= 512,
 			"mapping of more than 512GiB of memory is not yet implemented"
 		);
 		for (i, x) in l3.iter().enumerate() {
 			x.store(
-				make_entry(
-					i << 30,
-					PageTableEntryFlags::PRESENT
-						| PageTableEntryFlags::HUGE_PAGE
-						| PageTableEntryFlags::WRITABLE
-						| PageTableEntryFlags::DIRTY
-						| PageTableEntryFlags::ACCESSED,
-				),
+				if i < num_identity_map {
+					make_entry(
+						i << 30,
+						PageTableEntryFlags::PRESENT
+							| PageTableEntryFlags::HUGE_PAGE
+							| PageTableEntryFlags::WRITABLE
+							| PageTableEntryFlags::DIRTY
+							| PageTableEntryFlags::ACCESSED,
+					)
+				} else {
+					0
+				},
 				Relaxed,
 			);
 		}
@@ -97,7 +105,46 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 
 		// crate::mm::page_dump::dump_page_table_hierarchical();
 		crate::mm::page_dump::dump_page_table_leaves();
+		crate::mm::page_dump::dump_page_table_hierarchical();
+
+		NumIdentityPage(num_identity_map)
 	}
+	unsafe fn claim_virtual_memory(identity_map_info: Self::IdentityMappingInfo) {
+		let root = table_root_node();
+		for entry in &root[1..] {
+			let frame = physical_memory::allocate(SIZE_4KIB).unwrap();
+			unsafe { ptr::with_exposed_provenance_mut::<[u64; 512]>(frame).as_mut_unchecked() }
+				.fill(0);
+			entry.store(
+				make_entry(
+					frame,
+					PageTableEntryFlags::PRESENT
+						| PageTableEntryFlags::WRITABLE
+						| PageTableEntryFlags::ACCESSED,
+				),
+				Relaxed,
+			);
+		}
+		fn claim_range_plus_end(range: Range<usize>) {
+			unsafe {
+				virtual_memory::claim_pages(
+					SIZE_1GIB,
+					NonZeroUsize::new(range.start).unwrap(),
+					(range.end - range.start) / SIZE_1GIB.usize(),
+				);
+				virtual_memory::claim_pages(SIZE_2MIB, NonZeroUsize::new(range.end).unwrap(), 511);
+				virtual_memory::claim_pages(
+					SIZE_4KIB,
+					NonZeroUsize::new(range.end + SIZE_2MIB * 511).unwrap(),
+					511,
+				);
+			}
+		}
+		claim_range_plus_end(SIZE_1GIB * identity_map_info.0..1 << 47);
+		claim_range_plus_end(usize::MAX << 47..0usize.wrapping_sub(SIZE_1GIB.usize()));
+	}
+
+	type IdentityMappingInfo = NumIdentityPage;
 	type Flags = PageFlags;
 	unsafe fn merge_page(larger_page: PageSize, address: usize) {
 		assert!(larger_page > SIZE_4KIB);
@@ -250,6 +297,8 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		dump(0, 1 << 39, 0, table_root_node(), callback, flag_mask);
 	}
 }
+
+pub struct NumIdentityPage(usize);
 
 pub struct PageFlags(PageTableEntryFlags);
 

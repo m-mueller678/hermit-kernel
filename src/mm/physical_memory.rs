@@ -1,5 +1,6 @@
 use alloc::alloc::AllocError;
 use core::mem::MaybeUninit;
+use core::ops::Range;
 
 use crate::mm::page_size::PageSize;
 
@@ -30,5 +31,9 @@ pub unsafe fn deallocate_multiple(page_size: PageSize, frames: &[usize]) {
 	}
 }
 pub unsafe fn deallocate(page_size: PageSize, frame: usize) {
+	todo!()
+}
+
+pub unsafe fn claim(range: Range<usize>) {
 	todo!()
 }
