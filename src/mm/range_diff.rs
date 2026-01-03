@@ -83,7 +83,7 @@ impl RangeDiff {
 				self.ranges[self.i_memory].start = start + size;
 				return Some(start..end);
 			} else {
-				if start != end {
+				if start < end {
 					warn!(
 						"discarding {} of physical memory, too small for requested early allocation",
 						format_binary_si_bytes(end - start)
