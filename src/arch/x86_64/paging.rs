@@ -14,6 +14,7 @@ use x86_64::structures::paging::page_table::PageTableEntry;
 
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::{SIZE_2MIB, SIZE_4KIB};
+use crate::mm::page_dump::dump_page_table_hierarchical;
 use crate::mm::page_size::PageSize;
 use crate::mm::range_diff::RangeDiff;
 use crate::mm::{physical_memory, virtual_memory};
@@ -104,41 +105,56 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 	}
 	unsafe fn claim_virtual_memory(identity_map_info: Self::IdentityMappingInfo) {
 		let root = table_root_node();
-		for entry in &root[1..] {
-			let frame = physical_memory::allocate(SIZE_4KIB).unwrap();
-			unsafe { ptr::with_exposed_provenance_mut::<[u64; 512]>(frame).as_mut_unchecked() }
-				.fill(0);
-			entry.store(
-				make_entry(
-					frame,
-					PageTableEntryFlags::PRESENT
-						| PageTableEntryFlags::WRITABLE
-						| PageTableEntryFlags::ACCESSED,
-				),
-				Relaxed,
-			);
-		}
-		fn claim_range_plus_end(range: Range<usize>) {
+		/// allocate nodes in the page table that have entries pointing to pages of size page_size
+		/// The last page is further broken down to avoid mapping the end of memory
+		fn claim_range_without_end(
+			node: &[AtomicU64; 512],
+			node_start_addr: usize,
+			page_size: PageSize,
+			index_range: Range<usize>,
+		) {
+			for entry in &node[index_range.clone()] {
+				let frame = physical_memory::allocate(SIZE_4KIB).unwrap();
+				unsafe { ptr::with_exposed_provenance_mut::<[u64; 512]>(frame).as_mut_unchecked() }
+					.fill(0);
+				entry.store(
+					make_entry(
+						frame,
+						PageTableEntryFlags::PRESENT
+							| PageTableEntryFlags::WRITABLE
+							| PageTableEntryFlags::ACCESSED,
+					),
+					Relaxed,
+				);
+			}
+			let last = index_range.end - 1;
+			let full_pages = (index_range.end - index_range.start) * 512 - 1;
 			unsafe {
 				virtual_memory::claim_pages(
-					SIZE_1GIB,
-					NonZeroUsize::new(range.start).unwrap(),
-					NonZeroUsize::new((range.end - range.start) / SIZE_1GIB.usize()).unwrap(),
+					page_size,
+					NonZeroUsize::new(node_start_addr + index_range.start * 512 * page_size)
+						.unwrap(),
+					NonZeroUsize::new(full_pages).unwrap(),
 				);
-				virtual_memory::claim_pages(
-					SIZE_2MIB,
-					NonZeroUsize::new(range.end).unwrap(),
-					NonZeroUsize::new(511).unwrap(),
-				);
-				virtual_memory::claim_pages(
-					SIZE_4KIB,
-					NonZeroUsize::new(range.end + SIZE_2MIB * 511).unwrap(),
-					NonZeroUsize::new(511).unwrap(),
+			}
+			if let Some(page_size) = page_size.lesser() {
+				claim_range_without_end(
+					to_child(node, last),
+					node_start_addr + 512 * last * page_size,
+					page_size,
+					511..512,
 				);
 			}
 		}
-		claim_range_plus_end(SIZE_1GIB * identity_map_info.0..1 << 47);
-		claim_range_plus_end(usize::MAX << 47..0usize.wrapping_sub(SIZE_1GIB.usize()));
+		virtual_memory::claim_pages(
+			SIZE_1GIB,
+			NonZeroUsize::new(SIZE_1GIB * identity_map_info.0).unwrap(),
+			NonZeroUsize::new(512 - identity_map_info.0).unwrap(),
+		);
+		claim_range_without_end(root, 0, SIZE_1GIB, 1..256);
+		// add sign extension bits to node base address
+		claim_range_without_end(root, usize::MAX << 48, SIZE_1GIB, 256..512);
+		// dump_page_table_hierarchical();
 	}
 
 	type IdentityMappingInfo = NumIdentityPage;

@@ -9,6 +9,11 @@ impl core::fmt::Debug for PageSize {
 		core::fmt::Display::fmt(&format_binary_si_bytes(self.usize()), f)
 	}
 }
+impl core::fmt::Display for PageSize {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		core::fmt::Display::fmt(&format_binary_si_bytes(self.usize()), f)
+	}
+}
 
 impl PageSize {
 	pub fn usize(self) -> usize {

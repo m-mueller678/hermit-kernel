@@ -49,7 +49,9 @@ pub unsafe fn claim_pages(page_size: PageSize, start: NonZeroUsize, count: NonZe
 		return;
 	}
 	let max_count = NonZeroUsize::new((max_end - start.get()) / page_size).unwrap();
-	unsafe { deallocate(page_size, start, count.min(max_count)) }
+	let count = count.min(max_count);
+	debug!("claim virtual memory: {count:9}x{page_size:3?} starting from 0x{start:016x}");
+	unsafe { deallocate(page_size, start, count) }
 }
 
 static FREE_LISTS: [InterruptTicketMutex<FreeList<32>>; NUM_PAGE_SIZES] =
