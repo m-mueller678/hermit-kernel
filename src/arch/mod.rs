@@ -42,13 +42,6 @@ pub trait ArchTrait: PagingTrait {
 	fn get_possible_cpus() -> u32;
 	fn boot_next_processor();
 
-	const DEVICE_PAGE_SIZE: PageSize;
-	const IDENTITY_PAGE_SIZE: PageSize;
-	const HEAP_PAGE_SIZE: PageSize;
-	const MIN_PAGE_SIZE: PageSize;
-	const PAGE_SIZES: [PageSize; Arch::NUM_PAGE_SIZES];
-	const NUM_PAGE_SIZES: usize;
-
 	fn print_statistics();
 	fn physical_mem() -> RangeDiff;
 }
@@ -81,6 +74,22 @@ pub unsafe trait PagingTrait {
 		include_tracking_flags: bool,
 		callback: &mut dyn FnMut(&PageTableEntryDebug<'_>) -> bool,
 	);
+
+	fn lesser_page_size(p: PageSize) -> Option<PageSize> {
+		Some(Self::PAGE_SIZES[Self::page_size_index(p).checked_sub(1)?])
+	}
+	fn greater_page_size(p: PageSize) -> Option<PageSize> {
+		Self::PAGE_SIZES.get(Self::page_size_index(p) + 1).copied()
+	}
+	fn page_size_index(p: PageSize) -> usize {
+		Self::PAGE_SIZES.iter().position(|&x| x == p).unwrap()
+	}
+	const DEVICE_PAGE_SIZE: PageSize;
+	const IDENTITY_PAGE_SIZE: PageSize;
+	const HEAP_PAGE_SIZE: PageSize;
+	const MIN_PAGE_SIZE: PageSize;
+	const PAGE_SIZES: [PageSize; Arch::NUM_PAGE_SIZES];
+	const NUM_PAGE_SIZES: usize;
 }
 
 pub struct PageTableEntryDebug<'a> {
@@ -112,19 +121,21 @@ macro_rules! forward_type {
 		pub type $T = <Arch as ArchTrait>::$T;
 	};
 }
-macro_rules! forward_const {
+macro_rules! forward_page_const {
 	($X:ident:$T:ty) => {
-		pub const $X: $T = <Arch as ArchTrait>::$X;
+		pub const $X: $T = <Arch as PagingTrait>::$X;
 	};
 }
 
 forward_type!(SerialDevice);
 #[cfg(feature = "pci")]
 forward_type!(PciConfigRegion);
-forward_const!(DEVICE_PAGE_SIZE:PageSize);
-forward_const!(IDENTITY_PAGE_SIZE:PageSize);
-forward_const!(HEAP_PAGE_SIZE:PageSize);
-forward_const!(MIN_PAGE_SIZE:PageSize);
+forward_page_const!(PAGE_SIZES:[PageSize;NUM_PAGE_SIZES]);
+forward_page_const!(NUM_PAGE_SIZES:usize);
+forward_page_const!(DEVICE_PAGE_SIZE:PageSize);
+forward_page_const!(IDENTITY_PAGE_SIZE:PageSize);
+forward_page_const!(HEAP_PAGE_SIZE:PageSize);
+forward_page_const!(MIN_PAGE_SIZE:PageSize);
 pub type PageFlags = <Arch as PagingTrait>::Flags;
 
 cfg_if::cfg_if! {

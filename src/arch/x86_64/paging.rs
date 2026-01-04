@@ -130,13 +130,17 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 				virtual_memory::claim_pages(
 					SIZE_1GIB,
 					NonZeroUsize::new(range.start).unwrap(),
-					(range.end - range.start) / SIZE_1GIB.usize(),
+					NonZeroUsize::new((range.end - range.start) / SIZE_1GIB.usize()).unwrap(),
 				);
-				virtual_memory::claim_pages(SIZE_2MIB, NonZeroUsize::new(range.end).unwrap(), 511);
+				virtual_memory::claim_pages(
+					SIZE_2MIB,
+					NonZeroUsize::new(range.end).unwrap(),
+					NonZeroUsize::new(511).unwrap(),
+				);
 				virtual_memory::claim_pages(
 					SIZE_4KIB,
 					NonZeroUsize::new(range.end + SIZE_2MIB * 511).unwrap(),
-					511,
+					NonZeroUsize::new(511).unwrap(),
 				);
 			}
 		}
@@ -296,6 +300,13 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		}
 		dump(0, 1 << 39, 0, table_root_node(), callback, flag_mask);
 	}
+	const DEVICE_PAGE_SIZE: PageSize = SIZE_4KIB;
+	const HEAP_PAGE_SIZE: PageSize = SIZE_4KIB;
+	const IDENTITY_PAGE_SIZE: PageSize = SIZE_1GIB;
+	const MIN_PAGE_SIZE: PageSize = SIZE_4KIB;
+	const PAGE_SIZES: [PageSize; crate::Arch::NUM_PAGE_SIZES] = [SIZE_4KIB, SIZE_2MIB, SIZE_1GIB];
+
+	const NUM_PAGE_SIZES: usize = 3;
 }
 
 pub struct NumIdentityPage(usize);

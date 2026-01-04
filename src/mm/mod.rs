@@ -67,6 +67,8 @@ pub(crate) fn init() {
 		}
 	}
 
+	virtual_memory::init();
+
 	unsafe { Arch::claim_virtual_memory(identity_map_info) }
 
 	// info!("Total memory size: {} MiB", total_mem >> 20);

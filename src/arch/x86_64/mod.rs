@@ -90,11 +90,6 @@ impl ArchTrait for Arch {
 		kernel::boot_next_processor();
 	}
 
-	const DEVICE_PAGE_SIZE: PageSize = SIZE_4KIB;
-	const HEAP_PAGE_SIZE: PageSize = SIZE_4KIB;
-	const IDENTITY_PAGE_SIZE: PageSize = SIZE_1GIB;
-	const MIN_PAGE_SIZE: PageSize = SIZE_4KIB;
-
 	fn timestamp_unix_offset() -> u64 {
 		kernel::systemtime::timestamp_unix_offset()
 	}
@@ -135,10 +130,6 @@ impl ArchTrait for Arch {
 		});
 		RangeDiff::new(memories, reserved_regions)
 	}
-
-	const PAGE_SIZES: [PageSize; Arch::NUM_PAGE_SIZES] = [SIZE_4KIB, SIZE_2MIB, SIZE_1GIB];
-
-	const NUM_PAGE_SIZES: usize = 3;
 }
 
 pub const SIZE_4KIB: PageSize = PageSize(1 << 12);

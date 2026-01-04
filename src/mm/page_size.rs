@@ -1,4 +1,5 @@
 use crate::logging::format_binary_si_bytes;
+use crate::{Arch, PagingTrait};
 
 #[derive(Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 pub struct PageSize(pub usize);
@@ -27,5 +28,17 @@ impl core::ops::Mul<usize> for PageSize {
 
 	fn mul(self, rhs: usize) -> Self::Output {
 		self.0 * rhs
+	}
+}
+
+impl PageSize {
+	pub fn lesser(self) -> Option<Self> {
+		Arch::lesser_page_size(self)
+	}
+	pub fn greater(self) -> Option<Self> {
+		Arch::greater_page_size(self)
+	}
+	pub fn size_index(self) -> usize {
+		Arch::page_size_index(self)
 	}
 }
