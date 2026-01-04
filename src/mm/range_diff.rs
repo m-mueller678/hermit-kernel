@@ -51,14 +51,14 @@ impl RangeDiff {
 		}
 		ret.i_hole = ret.memory_count;
 		for x in &mut ret.ranges[..ret.memory_count] {
-			info!(
+			debug!(
 				"available physical memory region: {:016p}..{:016p}",
 				format_addr(x.start),
 				format_addr(x.end)
 			);
 		}
 		for x in &ret.ranges[ret.memory_count..] {
-			info!(
+			debug!(
 				"reserved physical memory region:  {:016p}..{:016p}",
 				format_addr(x.start),
 				format_addr(x.end)

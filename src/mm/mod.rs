@@ -40,14 +40,17 @@
 //!                │   │               │   │
 //! ```
 
+use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
+use core::ptr;
 
 use hermit_sync::RawInterruptTicketMutex;
 use talc::{ErrOnOom, Talc, Talck};
 
+use crate::arch::{PageFlags, PageFlagsTrait};
 use crate::logging::format_binary_si_bytes;
 use crate::mm::page_size::PageSize;
-use crate::{Arch, ArchTrait, PageFlags, PagingTrait};
+use crate::{Arch, ArchTrait, HEAP_PAGE_SIZE, MIN_PAGE_SIZE, PagingTrait};
 
 pub mod page_dump;
 pub mod page_size;
@@ -77,28 +80,34 @@ pub(crate) fn init() {
 		format_binary_si_bytes(physical_memory::total_claimed_memory())
 	);
 
-	// put some memory into ALLOCATOR and print information
-	todo!()
-	// info!("Heap is located at {heap_start_addr:p}..{heap_end_addr:p}");
+	init_heap();
 }
 
-/// Maps a given physical address and size. Allocated appropriate virtual memory and returns virtual address
-#[cfg(feature = "pci")]
-#[deprecated]
-pub(crate) fn map(
-	physical_address: usize,
-	size_bytes: usize,
-	writable: bool,
-	no_execution: bool,
-	no_cache: bool,
-) -> usize {
-	unimplemented!()
-}
+fn init_heap() {
+	let heap_pages = physical_memory::total_claimed_memory() / 4 / HEAP_PAGE_SIZE.usize();
+	let heap_virtual =
+		virtual_memory::allocate(HEAP_PAGE_SIZE, NonZeroUsize::new(heap_pages).unwrap()).unwrap();
 
-#[deprecated]
-/// unmaps virtual address, without 'freeing' physical memory it is mapped to!
-pub(crate) fn unmap(virtual_address: usize, size: usize) {
-	unimplemented!()
+	for i in 0..heap_pages {
+		unsafe {
+			Arch::map(
+				HEAP_PAGE_SIZE,
+				heap_virtual.get() + HEAP_PAGE_SIZE * i,
+				physical_memory::allocate(HEAP_PAGE_SIZE).unwrap(),
+				PageFlags::normal().writable(),
+			);
+		}
+	}
+
+	unsafe {
+		ALLOCATOR
+			.lock()
+			.claim(talc::Span::new(
+				ptr::with_exposed_provenance_mut(heap_virtual.get()),
+				ptr::with_exposed_provenance_mut(heap_virtual.get() + HEAP_PAGE_SIZE * heap_pages),
+			))
+			.unwrap();
+	}
 }
 
 pub unsafe fn map_contiguous(
