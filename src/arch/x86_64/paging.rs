@@ -74,7 +74,6 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		assert!(super::kernel::processor::supports_1gib_pages());
 		let memory_end = physical_mem.memory_end();
 		let num_identity_map = memory_end.div_ceil(1 << 30);
-		dbg!(num_identity_map);
 		assert!(
 			num_identity_map <= 512,
 			"mapping of more than 512GiB of memory is not yet implemented"
@@ -100,13 +99,7 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		// hermit loader sets up recursive page tables (the last entry points to the table root).
 		// We have no need for those.
 		table_root_node()[511].store(0, Relaxed);
-
 		x86_64::instructions::tlb::flush_all();
-
-		// crate::mm::page_dump::dump_page_table_hierarchical();
-		crate::mm::page_dump::dump_page_table_leaves();
-		crate::mm::page_dump::dump_page_table_hierarchical();
-
 		NumIdentityPage(num_identity_map)
 	}
 	unsafe fn claim_virtual_memory(identity_map_info: Self::IdentityMappingInfo) {
