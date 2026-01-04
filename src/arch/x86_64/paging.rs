@@ -294,7 +294,7 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 		dump(0, 1 << 39, 0, table_root_node(), callback, flag_mask);
 	}
 	const DEVICE_PAGE_SIZE: PageSize = SIZE_4KIB;
-	const HEAP_PAGE_SIZE: PageSize = SIZE_4KIB;
+	const HEAP_PAGE_SIZE: PageSize = SIZE_2MIB;
 	const IDENTITY_PAGE_SIZE: PageSize = SIZE_1GIB;
 	const MIN_PAGE_SIZE: PageSize = SIZE_4KIB;
 	const PAGE_SIZES: [PageSize; crate::Arch::NUM_PAGE_SIZES] = [SIZE_4KIB, SIZE_2MIB, SIZE_1GIB];

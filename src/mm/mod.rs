@@ -62,51 +62,56 @@ pub mod virtual_memory;
 pub(crate) static ALLOCATOR: Talck<RawInterruptTicketMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 pub(crate) fn init() {
-	let mut physical_memory = Arch::physical_mem();
-	let identity_map_info = unsafe { Arch::init_identity_mapping(&mut physical_memory) };
+	// init physical and virtual allocators
+	{
+		let mut physical_memory = Arch::physical_mem();
+		let identity_map_info = unsafe { Arch::init_identity_mapping(&mut physical_memory) };
 
-	while let Some(memory) = physical_memory.take_remaining() {
-		unsafe {
-			physical_memory::claim(memory);
+		while let Some(memory) = physical_memory.take_remaining() {
+			unsafe {
+				physical_memory::claim(memory);
+			}
 		}
+
+		virtual_memory::init();
+
+		unsafe { Arch::claim_virtual_memory(identity_map_info) }
+
+		info!(
+			"Claimed physical memory: {}",
+			format_binary_si_bytes(physical_memory::total_claimed_memory())
+		);
 	}
 
-	virtual_memory::init();
+	// init heap
+	{
+		let heap_pages = physical_memory::total_claimed_memory() / 4 / HEAP_PAGE_SIZE.usize();
+		let heap_virtual =
+			virtual_memory::allocate(HEAP_PAGE_SIZE, NonZeroUsize::new(heap_pages).unwrap())
+				.unwrap();
 
-	unsafe { Arch::claim_virtual_memory(identity_map_info) }
-
-	info!(
-		"Claimed physical memory: {}",
-		format_binary_si_bytes(physical_memory::total_claimed_memory())
-	);
-
-	init_heap();
-}
-
-fn init_heap() {
-	let heap_pages = physical_memory::total_claimed_memory() / 4 / HEAP_PAGE_SIZE.usize();
-	let heap_virtual =
-		virtual_memory::allocate(HEAP_PAGE_SIZE, NonZeroUsize::new(heap_pages).unwrap()).unwrap();
-
-	for i in 0..heap_pages {
-		unsafe {
-			Arch::map(
-				HEAP_PAGE_SIZE,
-				heap_virtual.get() + HEAP_PAGE_SIZE * i,
-				physical_memory::allocate(HEAP_PAGE_SIZE).unwrap(),
-				PageFlags::normal().writable(),
-			);
+		for i in 0..heap_pages {
+			unsafe {
+				Arch::map(
+					HEAP_PAGE_SIZE,
+					heap_virtual.get() + HEAP_PAGE_SIZE * i,
+					physical_memory::allocate(HEAP_PAGE_SIZE).unwrap(),
+					PageFlags::normal().writable(),
+				);
+			}
 		}
-	}
 
-	unsafe {
-		ALLOCATOR
-			.lock()
-			.claim(talc::Span::new(
-				ptr::with_exposed_provenance_mut(heap_virtual.get()),
-				ptr::with_exposed_provenance_mut(heap_virtual.get() + HEAP_PAGE_SIZE * heap_pages),
-			))
-			.unwrap();
+		unsafe {
+			ALLOCATOR
+				.lock()
+				.claim(talc::Span::new(
+					ptr::with_exposed_provenance_mut(heap_virtual.get()),
+					ptr::with_exposed_provenance_mut(
+						heap_virtual.get() + HEAP_PAGE_SIZE * heap_pages,
+					),
+				))
+				.unwrap();
+		}
 	}
 }
 

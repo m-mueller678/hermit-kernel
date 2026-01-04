@@ -11,13 +11,10 @@ pub fn init() {}
 
 /// Attempts to allocate a range of memory in page granularity.
 pub fn allocate(page_size: PageSize, count: NonZeroUsize) -> Result<NonZeroUsize, AllocError> {
-	match FREE_LISTS[page_size.size_index()].lock().allocate(
-		dbg!(PageLayout::from_size_align(
-			dbg!(page_size) * dbg!(count.get()),
-			page_size.usize()
-		))
-		.unwrap(),
-	) {
+	match FREE_LISTS[page_size.size_index()]
+		.lock()
+		.allocate(PageLayout::from_size_align(page_size * count.get(), page_size.usize()).unwrap())
+	{
 		Ok(x) => Ok(NonZeroUsize::new(x.start()).unwrap()),
 		Err(_) => Err(AllocError),
 	}
