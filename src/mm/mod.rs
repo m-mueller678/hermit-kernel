@@ -45,6 +45,7 @@ use core::num::NonZeroUsize;
 use hermit_sync::RawInterruptTicketMutex;
 use talc::{ErrOnOom, Talc, Talck};
 
+use crate::logging::format_binary_si_bytes;
 use crate::mm::page_size::PageSize;
 use crate::{Arch, ArchTrait, PageFlags, PagingTrait};
 
@@ -71,11 +72,10 @@ pub(crate) fn init() {
 
 	unsafe { Arch::claim_virtual_memory(identity_map_info) }
 
-	// info!("Total memory size: {} MiB", total_mem >> 20);
-	// info!(
-	// 	"Kernel region: {:p}..{:p}",
-	// 	kernel_addr_range.start, kernel_addr_range.end
-	// );
+	info!(
+		"Claimed physical memory: {}",
+		format_binary_si_bytes(physical_memory::total_claimed_memory())
+	);
 
 	// put some memory into ALLOCATOR and print information
 	todo!()

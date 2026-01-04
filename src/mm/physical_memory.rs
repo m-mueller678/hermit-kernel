@@ -1,6 +1,7 @@
 use alloc::alloc::AllocError;
 use core::mem::MaybeUninit;
 use core::ops::Range;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use free_list::{FreeList, PageLayout, PageRange};
 use hermit_sync::InterruptTicketMutex;
@@ -63,6 +64,12 @@ pub unsafe fn claim(range: Range<usize>) {
 			.deallocate(PageRange::new(range.start, range.end).unwrap())
 			.unwrap();
 	}
+	TOTAL_CLAIMED.fetch_add(range.end - range.start, Ordering::Relaxed);
 }
 
+pub fn total_claimed_memory() -> usize {
+	TOTAL_CLAIMED.load(Ordering::Relaxed)
+}
 static FREE_LIST: InterruptTicketMutex<FreeList<32>> = InterruptTicketMutex::new(FreeList::new());
+
+static TOTAL_CLAIMED: AtomicUsize = AtomicUsize::new(0);
