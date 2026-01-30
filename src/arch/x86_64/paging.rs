@@ -9,12 +9,10 @@ use x86_64::registers::control::{Cr2, Cr3};
 pub use x86_64::structures::idt::InterruptStackFrame as ExceptionStackFrame;
 use x86_64::structures::idt::PageFaultErrorCode;
 pub use x86_64::structures::paging::PageTableFlags as PageTableEntryFlags;
-use x86_64::structures::paging::PhysFrame;
 use x86_64::structures::paging::page_table::PageTableEntry;
 
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::{SIZE_2MIB, SIZE_4KIB};
-use crate::mm::page_dump::dump_page_table_hierarchical;
 use crate::mm::page_size::PageSize;
 use crate::mm::range_diff::RangeDiff;
 use crate::mm::{physical_memory, virtual_memory};
@@ -35,10 +33,6 @@ fn to_child(node: &[AtomicU64; 512], index: usize) -> &[AtomicU64; 512] {
 	let entry = entry_from_raw(node[index].load(Relaxed));
 	let child_addr = entry.frame().unwrap().start_address().as_u64() as usize;
 	node_from_address(child_addr)
-}
-
-fn frame_from_address(addr: usize) -> PhysFrame {
-	unsafe { PhysFrame::from_start_address_unchecked(PhysAddr::new_unsafe(addr as u64)) }
 }
 
 fn make_entry(address: usize, flags: PageTableEntryFlags) -> u64 {
@@ -146,11 +140,13 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 				);
 			}
 		}
-		virtual_memory::claim_pages(
-			SIZE_1GIB,
-			NonZeroUsize::new(SIZE_1GIB * identity_map_info.0).unwrap(),
-			NonZeroUsize::new(512 - identity_map_info.0).unwrap(),
-		);
+		unsafe {
+			virtual_memory::claim_pages(
+				SIZE_1GIB,
+				NonZeroUsize::new(SIZE_1GIB * identity_map_info.0).unwrap(),
+				NonZeroUsize::new(512 - identity_map_info.0).unwrap(),
+			);
+		}
 		claim_range_without_end(root, 0, SIZE_1GIB, 1..256);
 		// add sign extension bits to node base address
 		claim_range_without_end(root, usize::MAX << 48, SIZE_1GIB, 256..512);
@@ -203,8 +199,8 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 			}
 		}
 		let mut entry = PageTableEntry::new();
-		entry.set_frame(
-			frame_from_address(child_frame),
+		entry.set_addr(
+			PhysAddr::new(child_frame as u64),
 			PageTableEntryFlags::PRESENT,
 		);
 		table[index].store(entry_to_raw(entry), Relaxed);
@@ -226,7 +222,7 @@ unsafe impl PagingTrait for crate::x86_64::Arch {
 				flags.0 | PageTableEntryFlags::HUGE_PAGE
 			};
 			let mut entry = PageTableEntry::new();
-			entry.set_frame(frame_from_address(physical_address), flags);
+			entry.set_addr(PhysAddr::new(physical_address as u64), flags);
 			entry_to_raw(entry)
 		};
 

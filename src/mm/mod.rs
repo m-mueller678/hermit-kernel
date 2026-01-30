@@ -40,7 +40,6 @@
 //!                │   │               │   │
 //! ```
 
-use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
 use core::ptr;
 
@@ -48,9 +47,10 @@ use hermit_sync::RawInterruptTicketMutex;
 use talc::{ErrOnOom, Talc, Talck};
 
 use crate::arch::{PageFlags, PageFlagsTrait};
-use crate::logging::format_binary_si_bytes;
+use crate::logging::{format_addr, format_binary_si_bytes};
+use crate::mm::page_dump::dump_page_table_hierarchical;
 use crate::mm::page_size::PageSize;
-use crate::{Arch, ArchTrait, HEAP_PAGE_SIZE, MIN_PAGE_SIZE, PagingTrait};
+use crate::{Arch, ArchTrait, HEAP_PAGE_SIZE, PagingTrait};
 
 pub mod page_dump;
 pub mod page_size;
@@ -90,14 +90,17 @@ pub(crate) fn init() {
 			virtual_memory::allocate(HEAP_PAGE_SIZE, NonZeroUsize::new(heap_pages).unwrap())
 				.unwrap();
 
+		dump_page_table_hierarchical();
 		for i in 0..heap_pages {
 			unsafe {
+				dbg!(format_addr(heap_virtual.get()), HEAP_PAGE_SIZE);
 				Arch::map(
 					HEAP_PAGE_SIZE,
 					heap_virtual.get() + HEAP_PAGE_SIZE * i,
 					physical_memory::allocate(HEAP_PAGE_SIZE).unwrap(),
 					PageFlags::normal().writable(),
 				);
+				dbg!();
 			}
 		}
 
